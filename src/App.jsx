@@ -3,6 +3,7 @@ import DashboardPage from "./pages/DashboardPage";
 import LoginPage from "./pages/LoginPage";
 import GdprPage from "./pages/GdprPage";
 import ActivityFormPage from "./pages/ActivityFormPage";
+import CalendarPage from "./pages/CalendarPage";
 
 function App() {
   return (
@@ -20,6 +21,9 @@ function App() {
 
         {/*ActivityFormPage */}
         <Route path="/activity/:type/new" element={<ActivityFormPage />} />
+
+        {/*CalendarPage */}
+        <Route path="/calendar" element={<CalendarPage />} />
 
       </Routes>
     </BrowserRouter>
