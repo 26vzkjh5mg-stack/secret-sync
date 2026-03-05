@@ -1,4 +1,9 @@
+import React from "react";
+import { useNavigate } from "react-router-dom";
+
 export default function DashboardPage({ onLock, onOpen }) {
+  const navigate = useNavigate();
+
   const activityCards = [
     { id: "meet", title: "MEET & GREET", img: "/cards/meet.jpg" },
     { id: "outdoor", title: "OUTDOOR", img: "/cards/outdoor.jpg" },
@@ -7,6 +12,21 @@ export default function DashboardPage({ onLock, onOpen }) {
   ];
 
   const week = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+  const routeForActivity = (id) => {
+    switch (id) {
+      case "meet":
+        return "/activity/meet-greet/new";
+      case "outdoor":
+        return "/activity/outdoor/new";
+      case "hanging":
+        return "/activity/hanging-out/new";
+      case "party":
+        return "/activity/party/new";
+      default:
+        return "/dashboard";
+    }
+  };
 
   return (
     <div className="min-h-screen p-8">
@@ -40,7 +60,7 @@ export default function DashboardPage({ onLock, onOpen }) {
           {activityCards.map((card) => (
             <button
               key={card.id}
-              onClick={() => onOpen(card.id)}
+              onClick={() => navigate(routeForActivity(card.id))}
               className="group relative rounded-3xl overflow-hidden border border-white/10 hover:border-ss-gold/40 transition"
             >
               <img
@@ -66,7 +86,7 @@ export default function DashboardPage({ onLock, onOpen }) {
 
         {/* CALENDAR CARD */}
         <button
-          onClick={() => onOpen("calendar")}
+          onClick={() => navigate("/calendar")}
           className="rounded-3xl border border-white/10 bg-white/5 p-6 text-left hover:border-ss-gold/40 transition"
         >
           <h2 className="text-xl font-semibold ss-gold-text">Calendar</h2>

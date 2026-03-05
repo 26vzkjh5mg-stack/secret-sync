@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import DashboardPage from "./pages/DashboardPage";
 import LoginPage from "./pages/LoginPage";
 import GdprPage from "./pages/GdprPage";
+import ActivityFormPage from "./pages/ActivityFormPage";
 
 function App() {
   return (
@@ -16,6 +17,9 @@ function App() {
 
         {/* Dashboard */}
         <Route path="/dashboard" element={<DashboardPage />} />
+
+        {/*ActivityFormPage */}
+        <Route path="/activity/:type/new" element={<ActivityFormPage />} />
 
       </Routes>
     </BrowserRouter>
