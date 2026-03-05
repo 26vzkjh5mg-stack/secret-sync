@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 const KEY_EVENTS = "ss_events";
@@ -75,6 +75,47 @@ export default function CalendarPage() {
   const [filterType, setFilterType] = useState("all");
   const [selectedDayISO, setSelectedDayISO] = useState(null);
 
+  // ✅ Undo delete (toast)
+  const [undoState, setUndoState] = useState(null);
+  // undoState: { event: <deletedEvent>, expiresAt: number }
+  const undoTimerRef = useRef(null);
+
+  function clearUndoTimer() {
+    if (undoTimerRef.current) {
+      clearTimeout(undoTimerRef.current);
+      undoTimerRef.current = null;
+    }
+  }
+
+  function startUndoCountdown(deletedEvent, seconds = 5) {
+    clearUndoTimer();
+
+    const expiresAt = Date.now() + seconds * 1000;
+    setUndoState({ event: deletedEvent, expiresAt });
+
+    undoTimerRef.current = setTimeout(() => {
+      setUndoState(null);
+      undoTimerRef.current = null;
+    }, seconds * 1000);
+  }
+
+  function handleUndo() {
+    if (!undoState?.event) return;
+
+    // Restore the deleted event
+    const restored = undoState.event;
+
+    const next = [...events, restored]
+      .map((e) => ({ ...e, __ms: e.__ms ?? toMs(e) }))
+      .sort((a, b) => (a.__ms || 0) - (b.__ms || 0));
+
+    saveEventsSafe(next.map(({ __ms, ...rest }) => rest));
+    setEvents(next);
+
+    clearUndoTimer();
+    setUndoState(null);
+  }
+
   const [cursor, setCursor] = useState(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -127,6 +168,11 @@ export default function CalendarPage() {
     const ok = window.confirm(`Obrisati event${label}?`);
     if (!ok) return;
 
+    // If there is an active undo toast, finalize it (hide it) when a new delete happens
+    // so we only support undo for the LAST deleted item (clean UX).
+    clearUndoTimer();
+    setUndoState(null);
+
     const next = events.filter((e) => e.id !== id);
     saveEventsSafe(next.map(({ __ms, ...rest }) => rest));
     setEvents(next);
@@ -135,9 +181,12 @@ export default function CalendarPage() {
       const stillHas = next.some((e) => e?.startDate === selectedDayISO);
       if (!stillHas) setSelectedDayISO(null);
     }
+
+    // Start undo window (5 seconds)
+    if (target) startUndoCountdown(target, 5);
   }
 
-  // ✅ NEW: Clear all events (localStorage + UI refresh)
+  // ✅ Clear all events
   function handleClearAll() {
     if (events.length === 0) return;
 
@@ -145,6 +194,10 @@ export default function CalendarPage() {
       "Obrisati SVE evente?\n\nOva radnja briše sve spremljene evente na ovom uređaju i ne može se poništiti."
     );
     if (!ok) return;
+
+    // Clearing all should also dismiss undo state
+    clearUndoTimer();
+    setUndoState(null);
 
     try {
       localStorage.removeItem(KEY_EVENTS);
@@ -170,6 +223,12 @@ export default function CalendarPage() {
   const selectedDayLabel = selectedDayISO
     ? formatISOToDDMMYYYY(selectedDayISO) || selectedDayISO
     : null;
+
+  const undoSecondsLeft = useMemo(() => {
+    if (!undoState?.expiresAt) return 0;
+    const msLeft = Math.max(0, undoState.expiresAt - Date.now());
+    return Math.ceil(msLeft / 1000);
+  }, [undoState]);
 
   return (
     <div className="min-h-screen relative overflow-hidden">
@@ -206,12 +265,8 @@ export default function CalendarPage() {
           <div className="lg:col-span-5 rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl shadow-2xl p-6 md:p-8">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="text-xl font-semibold ss-gold-text">
-                  {monthLabel(cursor)}
-                </div>
-                <div className="text-xs text-white/40 mt-1">
-                  Klikni datum za filtriranje desne liste.
-                </div>
+                <div className="text-xl font-semibold ss-gold-text">{monthLabel(cursor)}</div>
+                <div className="text-xs text-white/40 mt-1">Klikni datum za filtriranje desne liste.</div>
               </div>
 
               <div className="flex items-center gap-2">
@@ -242,12 +297,7 @@ export default function CalendarPage() {
                 const inMonth = dayNum >= 1 && dayNum <= monthInfo.daysInMonth;
 
                 if (!inMonth) {
-                  return (
-                    <div
-                      key={idx}
-                      className="h-10 rounded-lg bg-white/5 border border-white/5"
-                    />
-                  );
+                  return <div key={idx} className="h-10 rounded-lg bg-white/5 border border-white/5" />;
                 }
 
                 const d = new Date(monthInfo.year, monthInfo.month, dayNum);
@@ -259,9 +309,7 @@ export default function CalendarPage() {
                 return (
                   <button
                     key={iso}
-                    onClick={() =>
-                      setSelectedDayISO((cur) => (cur === iso ? null : iso))
-                    }
+                    onClick={() => setSelectedDayISO((cur) => (cur === iso ? null : iso))}
                     className={[
                       "h-10 rounded-lg bg-white/10 border border-white/10 relative flex items-center justify-center",
                       "hover:border-ss-gold/30",
@@ -269,9 +317,7 @@ export default function CalendarPage() {
                       isSelected ? "border-ss-gold/50 ring-1 ring-ss-gold/40" : "",
                     ].join(" ")}
                   >
-                    <span className={isToday ? "text-ss-gold" : "text-white/80"}>
-                      {dayNum}
-                    </span>
+                    <span className={isToday ? "text-ss-gold" : "text-white/80"}>{dayNum}</span>
 
                     {count > 0 && (
                       <span className="absolute bottom-2 left-1/2 -translate-x-1/2 h-1.5 w-1.5 rounded-full bg-ss-gold" />
@@ -293,12 +339,8 @@ export default function CalendarPage() {
                 <div className="text-xs text-white/40 mt-1">
                   {selectedDayISO && (
                     <>
-                      Datum:{" "}
-                      <span className="text-white/60">{selectedDayLabel}</span>
-                      <button
-                        onClick={() => setSelectedDayISO(null)}
-                        className="ml-2 text-ss-gold"
-                      >
+                      Datum: <span className="text-white/60">{selectedDayLabel}</span>
+                      <button onClick={() => setSelectedDayISO(null)} className="ml-2 text-ss-gold">
                         Clear day
                       </button>
                     </>
@@ -307,7 +349,6 @@ export default function CalendarPage() {
               </div>
 
               <div className="flex flex-col items-end gap-2">
-                {/* FILTERS */}
                 <div className="flex flex-wrap justify-end gap-2">
                   {FILTERS.map((f) => (
                     <button
@@ -325,7 +366,6 @@ export default function CalendarPage() {
                   ))}
                 </div>
 
-                {/* ✅ NEW: CLEAR ALL */}
                 <button
                   type="button"
                   onClick={handleClearAll}
@@ -383,7 +423,6 @@ export default function CalendarPage() {
                           )}
                         </div>
 
-                        {/* ACTIONS */}
                         <div className="flex flex-col items-end gap-2">
                           <div className="text-xs text-white/40">
                             {TYPE_LABEL[e.type] || e.type}
@@ -414,6 +453,28 @@ export default function CalendarPage() {
           </div>
         </div>
       </div>
+
+      {/* ✅ UNDO TOAST (premium, non-intrusive) */}
+      {undoState?.event && (
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 px-4 w-full max-w-md">
+          <div className="rounded-2xl border border-white/10 bg-black/50 backdrop-blur-xl shadow-2xl px-4 py-3 flex items-center justify-between gap-3">
+            <div className="text-sm text-white/80">
+              Event obrisan{" "}
+              <span className="text-white/40">
+                ({Math.max(0, undoSecondsLeft)}s)
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleUndo}
+              className="rounded-xl px-3 py-1.5 text-xs font-semibold bg-white/5 text-white/80 border border-white/10 hover:bg-ss-gold/15 hover:border-ss-gold/30 hover:text-ss-gold transition"
+            >
+              UNDO
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
