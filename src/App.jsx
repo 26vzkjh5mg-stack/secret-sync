@@ -25,6 +25,9 @@ function App() {
         {/*CalendarPage */}
         <Route path="/calendar" element={<CalendarPage />} />
 
+        {/*ActivityFormPageEdit */}
+        <Route path="/activity/:type/edit/:id" element={<ActivityFormPage mode="edit" />} />
+
       </Routes>
     </BrowserRouter>
   );

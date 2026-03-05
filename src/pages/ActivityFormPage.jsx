@@ -13,7 +13,8 @@ const TYPE_META = {
 function loadEvents() {
   try {
     const raw = localStorage.getItem(KEY_EVENTS);
-    return raw ? JSON.parse(raw) : [];
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
   } catch {
     return [];
   }
@@ -49,10 +50,10 @@ function ddMmYyyyToISO(v) {
   return `${yyyy}-${pad2(mm)}-${pad2(dd)}`; // YYYY-MM-DD
 }
 
-// NEW: ISO (YYYY-MM-DD) -> DD.MM.YYYY
+// ISO (YYYY-MM-DD) -> DD.MM.YYYY
 function isoToDdMmYyyy(iso) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return "";
-  const [yyyy, mm, dd] = iso.split("-");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(iso || ""))) return "";
+  const [yyyy, mm, dd] = String(iso).split("-");
   return `${dd}.${mm}.${yyyy}`;
 }
 
@@ -66,22 +67,43 @@ function toDateTimeMs(isoDate, timeHHMM) {
   return new Date(y, m - 1, d, hh, mm, 0, 0).getTime();
 }
 
-export default function ActivityFormPage() {
+export default function ActivityFormPage({ mode }) {
   const navigate = useNavigate();
-  const { type } = useParams();
+  const { type, id } = useParams();
   const meta = TYPE_META[type] || { label: "ACTIVITY" };
 
-  const [withWhom, setWithWhom] = useState("");
-  const [startDate, setStartDate] = useState(todayDdMmYyyy()); // DD.MM.YYYY
-  const [startTime, setStartTime] = useState("18:00"); // 24h
-  const [endDate, setEndDate] = useState(todayDdMmYyyy());
-  const [endTime, setEndTime] = useState("20:00");
-  const [location, setLocation] = useState("");
-  const [notes, setNotes] = useState("");
+  const isEdit = mode === "edit" || Boolean(id);
 
-  // NEW: refs for native date pickers
+  // učitaj event za edit (jednom)
+  const existing = useMemo(() => {
+    if (!isEdit || !id) return null;
+    const arr = loadEvents();
+    const found = arr.find((e) => String(e?.id) === String(id));
+    return found || null;
+  }, [isEdit, id]);
+
+  const [withWhom, setWithWhom] = useState(existing?.withWhom || "");
+  const [startDate, setStartDate] = useState(
+    existing?.startDateDisplay ||
+      (existing?.startDate ? isoToDdMmYyyy(existing.startDate) : "") ||
+      todayDdMmYyyy()
+  ); // DD.MM.YYYY
+  const [startTime, setStartTime] = useState(existing?.startTime || "18:00"); // 24h
+  const [endDate, setEndDate] = useState(
+    existing?.endDateDisplay ||
+      (existing?.endDate ? isoToDdMmYyyy(existing.endDate) : "") ||
+      todayDdMmYyyy()
+  );
+  const [endTime, setEndTime] = useState(existing?.endTime || "20:00");
+  const [location, setLocation] = useState(existing?.location || "");
+  const [notes, setNotes] = useState(existing?.notes || "");
+
+  // refs for native date pickers
   const startPickerRef = useRef(null);
   const endPickerRef = useRef(null);
+
+  // ako je edit route, ali event ne postoji (npr. obrisan), vrati usera
+  const missingEditEvent = isEdit && id && !existing;
 
   const errors = useMemo(() => {
     const e = {};
@@ -128,28 +150,48 @@ export default function ActivityFormPage() {
     const startISO = ddMmYyyyToISO(startDate.trim());
     const endISO = ddMmYyyyToISO(endDate.trim());
 
-    const event = {
-      id: crypto?.randomUUID ? crypto.randomUUID() : String(Date.now()),
+    const base = {
       type,
       title: meta.label,
       withWhom: withWhom.trim(),
 
-      // store as ISO + time (stabilno za sortiranje)
       startDate: startISO,
       startTime: startTime.trim(),
       endDate: endISO,
       endTime: endTime.trim(),
 
-      // also keep display strings (da UI može prikazati baš DD.MM.YYYY)
       startDateDisplay: startDate.trim(),
       endDateDisplay: endDate.trim(),
 
       location: location.trim(),
       notes: notes.trim(),
-      createdAt: new Date().toISOString(),
     };
 
     const events = loadEvents();
+
+    if (isEdit && id) {
+      // UPDATE existing by id (keep createdAt if exists)
+      const next = events.map((ev) => {
+        if (String(ev?.id) !== String(id)) return ev;
+        return {
+          ...ev,
+          ...base,
+          updatedAt: new Date().toISOString(),
+        };
+      });
+
+      saveEvents(next);
+      navigate("/calendar");
+      return;
+    }
+
+    // CREATE new
+    const event = {
+      id: crypto?.randomUUID ? crypto.randomUUID() : String(Date.now()),
+      ...base,
+      createdAt: new Date().toISOString(),
+    };
+
     events.unshift(event);
     saveEvents(events);
 
@@ -165,11 +207,13 @@ export default function ActivityFormPage() {
         <div className="flex items-center justify-between gap-4 mb-6">
           <div>
             <div className="ss-title-lux text-2xl md:text-3xl">{meta.label}</div>
-            <div className="text-white/60 text-sm">Unos novog eventa</div>
+            <div className="text-white/60 text-sm">
+              {isEdit ? "Uređivanje eventa" : "Unos novog eventa"}
+            </div>
           </div>
 
           <button
-            onClick={() => navigate("/dashboard")}
+            onClick={() => navigate(isEdit ? "/calendar" : "/dashboard")}
             className="rounded-2xl px-4 py-2 font-semibold bg-white/5 text-white/70 border border-white/10 hover:bg-white/10 transition"
           >
             Natrag
@@ -177,8 +221,14 @@ export default function ActivityFormPage() {
         </div>
 
         <div className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl shadow-2xl p-6 md:p-8">
+          {missingEditEvent ? (
+            <div className="rounded-2xl border border-red-400/20 bg-red-500/10 p-4 text-sm text-red-200">
+              Ovaj event ne postoji (možda je obrisan). Vrati se na kalendar.
+            </div>
+          ) : null}
+
           {/* With whom */}
-          <div>
+          <div className="mt-1">
             <label className="block text-white/70 text-sm mb-2">
               S kime je sastanak <span className="text-ss-gold">*</span>
             </label>
@@ -193,14 +243,13 @@ export default function ActivityFormPage() {
             )}
           </div>
 
-          {/* Dates + times (custom format) */}
+          {/* Dates + times */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5">
             <div>
               <label className="block text-white/70 text-sm mb-2">
                 Datum početka <span className="text-ss-gold">*</span>
               </label>
 
-              {/* NEW: visible input + calendar icon + hidden native date picker */}
               <div className="relative">
                 <input
                   value={startDate}
@@ -258,7 +307,6 @@ export default function ActivityFormPage() {
                 Datum završetka <span className="text-ss-gold">*</span>
               </label>
 
-              {/* NEW: visible input + calendar icon + hidden native date picker */}
               <div className="relative">
                 <input
                   value={endDate}
@@ -331,7 +379,6 @@ export default function ActivityFormPage() {
               <div className="mt-1 text-xs text-red-300">{errors.location}</div>
             )}
 
-            {/* Minimalna “pomoć” bez API-ja */}
             {location.trim() && (
               <div className="mt-2">
                 <a
@@ -366,10 +413,10 @@ export default function ActivityFormPage() {
           <div className="mt-7 flex flex-col sm:flex-row gap-3">
             <button
               onClick={onSave}
-              disabled={!canSave}
+              disabled={!canSave || missingEditEvent}
               className={[
                 "rounded-2xl px-5 py-3 font-semibold transition",
-                canSave
+                canSave && !missingEditEvent
                   ? "bg-[#d4af37] text-black hover:opacity-90"
                   : "bg-white/10 text-white/40 cursor-not-allowed",
               ].join(" ")}
@@ -378,7 +425,7 @@ export default function ActivityFormPage() {
             </button>
 
             <button
-              onClick={() => navigate("/dashboard")}
+              onClick={() => navigate(isEdit ? "/calendar" : "/dashboard")}
               className="rounded-2xl px-5 py-3 font-semibold bg-white/5 text-white/70 border border-white/10 hover:bg-white/10 transition"
             >
               Odustani

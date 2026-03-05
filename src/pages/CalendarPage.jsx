@@ -31,13 +31,11 @@ function loadEventsSafe() {
 function saveEventsSafe(events) {
   try {
     localStorage.setItem(KEY_EVENTS, JSON.stringify(events));
-  } catch {
-    // noop
-  }
+  } catch {}
 }
 
 function toMs(e) {
-  const d = e?.startDate; // ISO YYYY-MM-DD
+  const d = e?.startDate;
   const t = e?.startTime || "00:00";
   const ms = new Date(`${d}T${t}`).getTime();
   return Number.isFinite(ms) ? ms : 0;
@@ -56,9 +54,7 @@ function isoFromDate(d) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-// Monday-first index: Mon=0..Sun=6
 function mondayIndex(jsDay) {
-  // JS: Sun=0..Sat=6 -> Mon=0..Sun=6
   return (jsDay + 6) % 7;
 }
 
@@ -77,11 +73,8 @@ export default function CalendarPage() {
   });
 
   const [filterType, setFilterType] = useState("all");
-
-  // NEW: day filter (klik na datum)
   const [selectedDayISO, setSelectedDayISO] = useState(null);
 
-  // current month "cursor"
   const [cursor, setCursor] = useState(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -93,15 +86,15 @@ export default function CalendarPage() {
 
   const monthInfo = useMemo(() => {
     const year = cursor.getFullYear();
-    const month = cursor.getMonth(); // 0..11
+    const month = cursor.getMonth();
     const first = new Date(year, month, 1);
-    const last = new Date(year, month + 1, 0); // last day of month
+    const last = new Date(year, month + 1, 0);
     const daysInMonth = last.getDate();
 
-    const startPad = mondayIndex(first.getDay()); // empty cells before 1st
+    const startPad = mondayIndex(first.getDay());
     const totalCells = Math.ceil((startPad + daysInMonth) / 7) * 7;
 
-    return { year, month, first, last, daysInMonth, startPad, totalCells };
+    return { year, month, daysInMonth, startPad, totalCells };
   }, [cursor]);
 
   const eventsCountByDay = useMemo(() => {
@@ -114,18 +107,14 @@ export default function CalendarPage() {
     return map;
   }, [events]);
 
-  // Right side list: events in current month (+ filter type) (+ optional selected day)
   const monthlyEvents = useMemo(() => {
     const ym = `${monthInfo.year}-${String(monthInfo.month + 1).padStart(2, "0")}`;
 
     const filtered = events.filter((e) => {
       if (!e?.startDate) return false;
       if (!String(e.startDate).startsWith(ym)) return false;
-
       if (filterType !== "all" && e.type !== filterType) return false;
-
       if (selectedDayISO && e.startDate !== selectedDayISO) return false;
-
       return true;
     });
 
@@ -142,7 +131,6 @@ export default function CalendarPage() {
     saveEventsSafe(next.map(({ __ms, ...rest }) => rest));
     setEvents(next);
 
-    // ako je obrisan zadnji event tog dana, makni day filter (da user ne misli da je prazno zbog buga)
     if (selectedDayISO) {
       const stillHas = next.some((e) => e?.startDate === selectedDayISO);
       if (!stillHas) setSelectedDayISO(null);
@@ -171,7 +159,8 @@ export default function CalendarPage() {
       <div className="absolute inset-0 -z-10 opacity-70 bg-[radial-gradient(ellipse_at_top,rgba(255,215,120,0.16),rgba(0,0,0,0)_55%)]" />
 
       <div className="max-w-6xl mx-auto px-6 py-10 text-white">
-        {/* Header */}
+
+        {/* HEADER */}
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <img
@@ -195,10 +184,11 @@ export default function CalendarPage() {
           </button>
         </div>
 
-        {/* Layout */}
         <div className="mt-8 grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* LEFT: Month calendar */}
+
+          {/* LEFT CALENDAR */}
           <div className="lg:col-span-5 rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl shadow-2xl p-6 md:p-8">
+
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-xl font-semibold ss-gold-text">
@@ -210,41 +200,28 @@ export default function CalendarPage() {
               </div>
 
               <div className="flex items-center gap-2">
-                <button
-                  onClick={goPrevMonth}
-                  className="rounded-xl px-3 py-2 text-xs font-semibold bg-white/5 text-white/70 border border-white/10 hover:bg-white/10 transition"
-                >
+                <button onClick={goPrevMonth} className="rounded-xl px-3 py-2 text-xs font-semibold bg-white/5 border border-white/10 hover:bg-white/10">
                   Prev
                 </button>
-                <button
-                  onClick={goNextMonth}
-                  className="rounded-xl px-3 py-2 text-xs font-semibold bg-white/5 text-white/70 border border-white/10 hover:bg-white/10 transition"
-                >
+                <button onClick={goNextMonth} className="rounded-xl px-3 py-2 text-xs font-semibold bg-white/5 border border-white/10 hover:bg-white/10">
                   Next
                 </button>
               </div>
             </div>
 
-            {/* Week header */}
             <div className="mt-5 grid grid-cols-7 gap-2 text-[11px] text-center text-white/70">
               {weekHeader.map((d) => (
                 <div key={d}>{d}</div>
               ))}
             </div>
 
-            {/* Month grid */}
             <div className="mt-3 grid grid-cols-7 gap-2">
               {Array.from({ length: monthInfo.totalCells }).map((_, idx) => {
                 const dayNum = idx - monthInfo.startPad + 1;
                 const inMonth = dayNum >= 1 && dayNum <= monthInfo.daysInMonth;
 
                 if (!inMonth) {
-                  return (
-                    <div
-                      key={idx}
-                      className="h-10 rounded-lg bg-white/5 border border-white/5"
-                    />
-                  );
+                  return <div key={idx} className="h-10 rounded-lg bg-white/5 border border-white/5" />;
                 }
 
                 const d = new Date(monthInfo.year, monthInfo.month, dayNum);
@@ -255,22 +232,16 @@ export default function CalendarPage() {
 
                 return (
                   <button
-                    type="button"
                     key={iso}
                     onClick={() => setSelectedDayISO((cur) => (cur === iso ? null : iso))}
                     className={[
-                      "h-10 rounded-lg bg-white/10 border border-white/10 relative flex items-center justify-center transition",
+                      "h-10 rounded-lg bg-white/10 border border-white/10 relative flex items-center justify-center",
                       "hover:border-ss-gold/30",
                       isToday ? "ring-1 ring-ss-gold/60" : "",
                       isSelected ? "border-ss-gold/50 ring-1 ring-ss-gold/40" : "",
                     ].join(" ")}
-                    title={count ? `${count} event(a)` : "Nema eventa"}
                   >
-                    <span
-                      className={[
-                        isSelected ? "text-ss-gold" : isToday ? "text-ss-gold" : "text-white/80",
-                      ].join(" ")}
-                    >
+                    <span className={isToday ? "text-ss-gold" : "text-white/80"}>
                       {dayNum}
                     </span>
 
@@ -281,36 +252,25 @@ export default function CalendarPage() {
                 );
               })}
             </div>
-
-            <div className="mt-5 text-xs text-white/35">
-              Tip: klik na isti datum ponovno → skida filter.
-            </div>
           </div>
 
-          {/* RIGHT: Monthly list + filter */}
+          {/* RIGHT EVENT LIST */}
           <div className="lg:col-span-7 rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl shadow-2xl p-6 md:p-8">
+
             <div className="flex items-start justify-between gap-4">
+
               <div>
                 <h2 className="text-xl font-semibold ss-gold-text">
                   {selectedDayISO ? "Events for day" : "Events this month"}
                 </h2>
+
                 <div className="text-xs text-white/40 mt-1">
-                  {selectedDayISO ? (
+                  {selectedDayISO && (
                     <>
-                      Datum: <span className="text-white/60">{selectedDayLabel}</span>{" "}
-                      <button
-                        onClick={() => setSelectedDayISO(null)}
-                        className="ml-2 text-ss-gold hover:opacity-80"
-                      >
+                      Datum: <span className="text-white/60">{selectedDayLabel}</span>
+                      <button onClick={() => setSelectedDayISO(null)} className="ml-2 text-ss-gold">
                         Clear day
                       </button>
-                    </>
-                  ) : (
-                    <>
-                      Filter:{" "}
-                      <span className="text-white/60">
-                        {FILTERS.find((f) => f.key === filterType)?.label}
-                      </span>
                     </>
                   )}
                 </div>
@@ -322,30 +282,34 @@ export default function CalendarPage() {
                     key={f.key}
                     onClick={() => setFilterType(f.key)}
                     className={[
-                      "rounded-xl px-3 py-2 text-[11px] font-semibold border transition",
+                      "rounded-xl px-3 py-2 text-[11px] font-semibold border",
                       filterType === f.key
                         ? "bg-[#d4af37] text-black border-[#d4af37]"
-                        : "bg-white/5 text-white/70 border-white/10 hover:bg-white/10",
+                        : "bg-white/5 text-white/70 border-white/10",
                     ].join(" ")}
                   >
                     {f.label}
                   </button>
                 ))}
               </div>
+
             </div>
 
             {monthlyEvents.length === 0 ? (
               <div className="mt-6 text-white/50 text-sm">
-                Nema eventa za odabrani filter{selectedDayISO ? " na ovaj datum" : " u ovom mjesecu"}.
+                Nema eventa.
               </div>
             ) : (
               <div className="mt-6 space-y-3">
+
                 {monthlyEvents.map((e) => {
+
                   const date =
                     e.startDateDisplay ||
                     formatISOToDDMMYYYY(e.startDate) ||
                     e.startDate ||
                     "";
+
                   const time = e.startTime || "";
 
                   return (
@@ -354,46 +318,63 @@ export default function CalendarPage() {
                       className="rounded-2xl border border-white/10 bg-black/25 p-4 hover:border-ss-gold/30 transition"
                     >
                       <div className="flex items-start justify-between gap-4">
+
                         <div>
                           <div className="font-semibold">{e.title || "Event"}</div>
+
                           <div className="text-xs text-white/60 mt-1">
                             {date} {time}
                             {e.location ? ` • ${e.location}` : ""}
                           </div>
-                          {e.withWhom ? (
+
+                          {e.withWhom && (
                             <div className="text-xs text-white/50 mt-1">
                               S kime: {e.withWhom}
                             </div>
-                          ) : null}
-                          {e.notes ? (
+                          )}
+
+                          {e.notes && (
                             <div className="text-xs text-white/50 mt-1">
                               Napomena: {e.notes}
                             </div>
-                          ) : null}
+                          )}
                         </div>
 
+                        {/* ACTIONS */}
                         <div className="flex flex-col items-end gap-2">
+
                           <div className="text-xs text-white/40">
-                            {TYPE_LABEL[e.type] || e.type || ""}
+                            {TYPE_LABEL[e.type] || e.type}
                           </div>
 
-                          <button
-                            onClick={() => handleDelete(e.id)}
-                            className="rounded-xl px-3 py-1.5 text-xs font-semibold bg-white/5 text-white/70 border border-white/10 hover:bg-red-500/15 hover:border-red-400/30 hover:text-red-200 transition"
-                          >
-                            Delete
-                          </button>
+                          <div className="flex gap-2">
+
+                            <button
+                              onClick={() => navigate(`/activity/${e.type}/edit/${e.id}`)}
+                              className="rounded-xl px-3 py-1.5 text-xs font-semibold bg-white/5 text-white/70 border border-white/10 hover:bg-blue-500/15 hover:border-blue-400/30 hover:text-blue-200 transition"
+                            >
+                              Edit
+                            </button>
+
+                            <button
+                              onClick={() => handleDelete(e.id)}
+                              className="rounded-xl px-3 py-1.5 text-xs font-semibold bg-white/5 text-white/70 border border-white/10 hover:bg-red-500/15 hover:border-red-400/30 hover:text-red-200 transition"
+                            >
+                              Delete
+                            </button>
+
+                          </div>
+
                         </div>
+
                       </div>
                     </div>
                   );
                 })}
+
               </div>
             )}
 
-            <div className="mt-8 text-xs text-white/35">
-              Sljedeći korak: “Edit event” (uređivanje) + opcija “Clear all”.
-            </div>
           </div>
         </div>
       </div>
