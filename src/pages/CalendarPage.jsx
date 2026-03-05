@@ -75,9 +75,13 @@ export default function CalendarPage() {
   const [filterType, setFilterType] = useState("all");
   const [selectedDayISO, setSelectedDayISO] = useState(null);
 
-  // ✅ Undo delete (toast)
+  /**
+   * ✅ Undo system: supports either
+   * - { kind: "delete-one", payload: <event> }
+   * - { kind: "clear-all", payload: <eventsBackupArray> }
+   */
   const [undoState, setUndoState] = useState(null);
-  // undoState: { event: <deletedEvent>, expiresAt: number }
+  // undoState: { kind, payload, expiresAt }
   const undoTimerRef = useRef(null);
 
   function clearUndoTimer() {
@@ -87,11 +91,11 @@ export default function CalendarPage() {
     }
   }
 
-  function startUndoCountdown(deletedEvent, seconds = 5) {
+  function startUndoCountdown(kind, payload, seconds = 5) {
     clearUndoTimer();
 
     const expiresAt = Date.now() + seconds * 1000;
-    setUndoState({ event: deletedEvent, expiresAt });
+    setUndoState({ kind, payload, expiresAt });
 
     undoTimerRef.current = setTimeout(() => {
       setUndoState(null);
@@ -100,17 +104,36 @@ export default function CalendarPage() {
   }
 
   function handleUndo() {
-    if (!undoState?.event) return;
+    if (!undoState) return;
 
-    // Restore the deleted event
-    const restored = undoState.event;
+    // Restore based on undo kind
+    if (undoState.kind === "delete-one") {
+      const restored = undoState.payload;
+      if (!restored) return;
 
-    const next = [...events, restored]
-      .map((e) => ({ ...e, __ms: e.__ms ?? toMs(e) }))
-      .sort((a, b) => (a.__ms || 0) - (b.__ms || 0));
+      const next = [...events, restored]
+        .map((e) => ({ ...e, __ms: e.__ms ?? toMs(e) }))
+        .sort((a, b) => (a.__ms || 0) - (b.__ms || 0));
 
-    saveEventsSafe(next.map(({ __ms, ...rest }) => rest));
-    setEvents(next);
+      saveEventsSafe(next.map(({ __ms, ...rest }) => rest));
+      setEvents(next);
+    }
+
+    if (undoState.kind === "clear-all") {
+      const backupArr = Array.isArray(undoState.payload) ? undoState.payload : [];
+      const next = [...backupArr]
+        .map((e) => ({ ...e, __ms: e.__ms ?? toMs(e) }))
+        .sort((a, b) => (a.__ms || 0) - (b.__ms || 0));
+
+      saveEventsSafe(next.map(({ __ms, ...rest }) => rest));
+      setEvents(next);
+
+      // Optional: keep user in a sane UI state after restore
+      // We reset filters only if current state is inconsistent (e.g., selected day not found)
+      // For simplicity + predictable UX:
+      setSelectedDayISO(null);
+      setFilterType("all");
+    }
 
     clearUndoTimer();
     setUndoState(null);
@@ -168,8 +191,7 @@ export default function CalendarPage() {
     const ok = window.confirm(`Obrisati event${label}?`);
     if (!ok) return;
 
-    // If there is an active undo toast, finalize it (hide it) when a new delete happens
-    // so we only support undo for the LAST deleted item (clean UX).
+    // only allow undo for the LAST destructive action
     clearUndoTimer();
     setUndoState(null);
 
@@ -182,11 +204,10 @@ export default function CalendarPage() {
       if (!stillHas) setSelectedDayISO(null);
     }
 
-    // Start undo window (5 seconds)
-    if (target) startUndoCountdown(target, 5);
+    if (target) startUndoCountdown("delete-one", target, 5);
   }
 
-  // ✅ Clear all events
+  // ✅ Clear all events + Undo
   function handleClearAll() {
     if (events.length === 0) return;
 
@@ -195,17 +216,23 @@ export default function CalendarPage() {
     );
     if (!ok) return;
 
-    // Clearing all should also dismiss undo state
+    // only allow undo for the LAST destructive action
     clearUndoTimer();
     setUndoState(null);
 
+    // Backup current state (without __ms)
+    const backup = events.map(({ __ms, ...rest }) => rest);
+
+    // Clear storage + UI
     try {
       localStorage.removeItem(KEY_EVENTS);
     } catch {}
-
     setEvents([]);
     setSelectedDayISO(null);
     setFilterType("all");
+
+    // Start undo for clear-all (5 seconds)
+    startUndoCountdown("clear-all", backup, 5);
   }
 
   function goPrevMonth() {
@@ -224,10 +251,18 @@ export default function CalendarPage() {
     ? formatISOToDDMMYYYY(selectedDayISO) || selectedDayISO
     : null;
 
+  // Countdown display (approx)
   const undoSecondsLeft = useMemo(() => {
     if (!undoState?.expiresAt) return 0;
     const msLeft = Math.max(0, undoState.expiresAt - Date.now());
     return Math.ceil(msLeft / 1000);
+  }, [undoState]);
+
+  const undoMessage = useMemo(() => {
+    if (!undoState) return "";
+    if (undoState.kind === "delete-one") return "Event obrisan";
+    if (undoState.kind === "clear-all") return "Svi eventi obrisani";
+    return "Promjena";
   }, [undoState]);
 
   return (
@@ -424,9 +459,7 @@ export default function CalendarPage() {
                         </div>
 
                         <div className="flex flex-col items-end gap-2">
-                          <div className="text-xs text-white/40">
-                            {TYPE_LABEL[e.type] || e.type}
-                          </div>
+                          <div className="text-xs text-white/40">{TYPE_LABEL[e.type] || e.type}</div>
 
                           <div className="flex gap-2">
                             <button
@@ -454,15 +487,13 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {/* ✅ UNDO TOAST (premium, non-intrusive) */}
-      {undoState?.event && (
+      {/* ✅ UNDO TOAST */}
+      {undoState && (
         <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 px-4 w-full max-w-md">
           <div className="rounded-2xl border border-white/10 bg-black/50 backdrop-blur-xl shadow-2xl px-4 py-3 flex items-center justify-between gap-3">
             <div className="text-sm text-white/80">
-              Event obrisan{" "}
-              <span className="text-white/40">
-                ({Math.max(0, undoSecondsLeft)}s)
-              </span>
+              {undoMessage}{" "}
+              <span className="text-white/40">({Math.max(0, undoSecondsLeft)}s)</span>
             </div>
 
             <button
