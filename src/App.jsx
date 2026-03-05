@@ -1,26 +1,25 @@
-import { useState } from "react";
-import LoginPage from "./pages/LoginPage";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import DashboardPage from "./pages/DashboardPage";
+import LoginPage from "./pages/LoginPage";
+import GdprPage from "./pages/GdprPage";
 
-export default function App() {
-  const [unlocked, setUnlocked] = useState(false);
+function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
 
-  function handleUnlock(pass) {
-    // pass trenutno ne koristimo, ali kasnije hoćemo za crypto
-    setUnlocked(true);
-  }
+        {/* GDPR landing page */}
+        <Route path="/" element={<GdprPage />} />
 
-  function handleLock() {
-    setUnlocked(false);
-  }
+        {/* Login */}
+        <Route path="/login" element={<LoginPage />} />
 
-  function handleOpen(cardId) {
-    alert(`Open card: ${cardId}`);
-  }
+        {/* Dashboard */}
+        <Route path="/dashboard" element={<DashboardPage />} />
 
-  if (!unlocked) {
-    return <LoginPage onUnlock={handleUnlock} />;
-  }
-
-  return <DashboardPage onLock={handleLock} onOpen={handleOpen} />;
+      </Routes>
+    </BrowserRouter>
+  );
 }
+
+export default App;
