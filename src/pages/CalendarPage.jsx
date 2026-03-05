@@ -3,6 +3,21 @@ import { useNavigate } from "react-router-dom";
 
 const KEY_EVENTS = "ss_events";
 
+const TYPE_LABEL = {
+  "meet-greet": "MEET & GREET",
+  outdoor: "OUTDOOR",
+  "hanging-out": "HANGING OUT",
+  party: "PARTY",
+};
+
+const FILTERS = [
+  { key: "all", label: "ALL" },
+  { key: "meet-greet", label: "MEET & GREET" },
+  { key: "outdoor", label: "OUTDOOR" },
+  { key: "hanging-out", label: "HANGING OUT" },
+  { key: "party", label: "PARTY" },
+];
+
 function loadEventsSafe() {
   try {
     const raw = localStorage.getItem(KEY_EVENTS);
@@ -34,10 +49,26 @@ function formatISOToDDMMYYYY(iso) {
   return `${d}.${m}.${y}`;
 }
 
+function isoFromDate(d) {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+// Monday-first index: Mon=0..Sun=6
+function mondayIndex(jsDay) {
+  // JS: Sun=0..Sat=6 -> Mon=0..Sun=6
+  return (jsDay + 6) % 7;
+}
+
+function monthLabel(d) {
+  return d.toLocaleDateString("hr-HR", { month: "long", year: "numeric" });
+}
+
 export default function CalendarPage() {
   const navigate = useNavigate();
 
-  // inicijalno učitaj + sortiraj
   const [events, setEvents] = useState(() => {
     const arr = loadEventsSafe();
     return [...arr]
@@ -45,10 +76,61 @@ export default function CalendarPage() {
       .sort((a, b) => a.__ms - b.__ms);
   });
 
-  const countText = useMemo(() => {
-    if (!events.length) return "0";
-    return String(events.length);
-  }, [events.length]);
+  const [filterType, setFilterType] = useState("all");
+
+  // NEW: day filter (klik na datum)
+  const [selectedDayISO, setSelectedDayISO] = useState(null);
+
+  // current month "cursor"
+  const [cursor, setCursor] = useState(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(1);
+    return d;
+  });
+
+  const todayISO = isoFromDate(new Date());
+
+  const monthInfo = useMemo(() => {
+    const year = cursor.getFullYear();
+    const month = cursor.getMonth(); // 0..11
+    const first = new Date(year, month, 1);
+    const last = new Date(year, month + 1, 0); // last day of month
+    const daysInMonth = last.getDate();
+
+    const startPad = mondayIndex(first.getDay()); // empty cells before 1st
+    const totalCells = Math.ceil((startPad + daysInMonth) / 7) * 7;
+
+    return { year, month, first, last, daysInMonth, startPad, totalCells };
+  }, [cursor]);
+
+  const eventsCountByDay = useMemo(() => {
+    const map = {};
+    for (const e of events) {
+      const key = e?.startDate;
+      if (!key) continue;
+      map[key] = (map[key] || 0) + 1;
+    }
+    return map;
+  }, [events]);
+
+  // Right side list: events in current month (+ filter type) (+ optional selected day)
+  const monthlyEvents = useMemo(() => {
+    const ym = `${monthInfo.year}-${String(monthInfo.month + 1).padStart(2, "0")}`;
+
+    const filtered = events.filter((e) => {
+      if (!e?.startDate) return false;
+      if (!String(e.startDate).startsWith(ym)) return false;
+
+      if (filterType !== "all" && e.type !== filterType) return false;
+
+      if (selectedDayISO && e.startDate !== selectedDayISO) return false;
+
+      return true;
+    });
+
+    return [...filtered].sort((a, b) => (a.__ms || 0) - (b.__ms || 0));
+  }, [events, monthInfo.year, monthInfo.month, filterType, selectedDayISO]);
 
   function handleDelete(id) {
     const target = events.find((x) => x.id === id);
@@ -57,10 +139,31 @@ export default function CalendarPage() {
     if (!ok) return;
 
     const next = events.filter((e) => e.id !== id);
-    // spremi bez __ms polja
     saveEventsSafe(next.map(({ __ms, ...rest }) => rest));
     setEvents(next);
+
+    // ako je obrisan zadnji event tog dana, makni day filter (da user ne misli da je prazno zbog buga)
+    if (selectedDayISO) {
+      const stillHas = next.some((e) => e?.startDate === selectedDayISO);
+      if (!stillHas) setSelectedDayISO(null);
+    }
   }
+
+  function goPrevMonth() {
+    setCursor((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1));
+    setSelectedDayISO(null);
+  }
+
+  function goNextMonth() {
+    setCursor((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1));
+    setSelectedDayISO(null);
+  }
+
+  const weekHeader = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+  const selectedDayLabel = selectedDayISO
+    ? formatISOToDDMMYYYY(selectedDayISO) || selectedDayISO
+    : null;
 
   return (
     <div className="min-h-screen relative overflow-hidden">
@@ -92,82 +195,205 @@ export default function CalendarPage() {
           </button>
         </div>
 
-        {/* Content */}
-        <div className="mt-8 rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl shadow-2xl p-6 md:p-8">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-semibold ss-gold-text">All events</h2>
-              <div className="text-xs text-white/40 mt-1">
-                Ukupno: <span className="text-white/60">{countText}</span>
+        {/* Layout */}
+        <div className="mt-8 grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* LEFT: Month calendar */}
+          <div className="lg:col-span-5 rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl shadow-2xl p-6 md:p-8">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-xl font-semibold ss-gold-text">
+                  {monthLabel(cursor)}
+                </div>
+                <div className="text-xs text-white/40 mt-1">
+                  Klikni datum za filtriranje desne liste.
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={goPrevMonth}
+                  className="rounded-xl px-3 py-2 text-xs font-semibold bg-white/5 text-white/70 border border-white/10 hover:bg-white/10 transition"
+                >
+                  Prev
+                </button>
+                <button
+                  onClick={goNextMonth}
+                  className="rounded-xl px-3 py-2 text-xs font-semibold bg-white/5 text-white/70 border border-white/10 hover:bg-white/10 transition"
+                >
+                  Next
+                </button>
               </div>
             </div>
 
-            <div className="text-xs text-white/40">
-              localStorage: <span className="text-white/60">{KEY_EVENTS}</span>
+            {/* Week header */}
+            <div className="mt-5 grid grid-cols-7 gap-2 text-[11px] text-center text-white/70">
+              {weekHeader.map((d) => (
+                <div key={d}>{d}</div>
+              ))}
             </div>
-          </div>
 
-          {events.length === 0 ? (
-            <div className="mt-6 text-white/50 text-sm">
-              Još nema spremljenih eventa. Kreiraj prvi event s dashboarda.
-            </div>
-          ) : (
-            <div className="mt-6 space-y-3">
-              {events.map((e) => {
-                const date =
-                  e.startDateDisplay ||
-                  formatISOToDDMMYYYY(e.startDate) ||
-                  e.startDate ||
-                  "";
-                const time = e.startTime || "";
+            {/* Month grid */}
+            <div className="mt-3 grid grid-cols-7 gap-2">
+              {Array.from({ length: monthInfo.totalCells }).map((_, idx) => {
+                const dayNum = idx - monthInfo.startPad + 1;
+                const inMonth = dayNum >= 1 && dayNum <= monthInfo.daysInMonth;
+
+                if (!inMonth) {
+                  return (
+                    <div
+                      key={idx}
+                      className="h-10 rounded-lg bg-white/5 border border-white/5"
+                    />
+                  );
+                }
+
+                const d = new Date(monthInfo.year, monthInfo.month, dayNum);
+                const iso = isoFromDate(d);
+                const isToday = iso === todayISO;
+                const isSelected = iso === selectedDayISO;
+                const count = eventsCountByDay[iso] || 0;
 
                 return (
-                  <div
-                    key={e.id}
-                    className="rounded-2xl border border-white/10 bg-black/25 p-4 hover:border-ss-gold/30 transition"
+                  <button
+                    type="button"
+                    key={iso}
+                    onClick={() => setSelectedDayISO((cur) => (cur === iso ? null : iso))}
+                    className={[
+                      "h-10 rounded-lg bg-white/10 border border-white/10 relative flex items-center justify-center transition",
+                      "hover:border-ss-gold/30",
+                      isToday ? "ring-1 ring-ss-gold/60" : "",
+                      isSelected ? "border-ss-gold/50 ring-1 ring-ss-gold/40" : "",
+                    ].join(" ")}
+                    title={count ? `${count} event(a)` : "Nema eventa"}
                   >
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <div className="font-semibold">
-                          {e.title || "Event"}
-                        </div>
-                        <div className="text-xs text-white/60 mt-1">
-                          {date} {time}
-                          {e.location ? ` • ${e.location}` : ""}
-                        </div>
-                        {e.withWhom ? (
-                          <div className="text-xs text-white/50 mt-1">
-                            S kime: {e.withWhom}
-                          </div>
-                        ) : null}
-                        {e.notes ? (
-                          <div className="text-xs text-white/50 mt-1">
-                            Napomena: {e.notes}
-                          </div>
-                        ) : null}
-                      </div>
+                    <span
+                      className={[
+                        isSelected ? "text-ss-gold" : isToday ? "text-ss-gold" : "text-white/80",
+                      ].join(" ")}
+                    >
+                      {dayNum}
+                    </span>
 
-                      <div className="flex flex-col items-end gap-2">
-                        <div className="text-xs text-white/40">
-                          {e.type || ""}
-                        </div>
-
-                        <button
-                          onClick={() => handleDelete(e.id)}
-                          className="rounded-xl px-3 py-1.5 text-xs font-semibold bg-white/5 text-white/70 border border-white/10 hover:bg-red-500/15 hover:border-red-400/30 hover:text-red-200 transition"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+                    {count > 0 && (
+                      <span className="absolute bottom-2 left-1/2 -translate-x-1/2 h-1.5 w-1.5 rounded-full bg-ss-gold" />
+                    )}
+                  </button>
                 );
               })}
             </div>
-          )}
 
-          <div className="mt-8 text-xs text-white/35">
-            Sljedeći korak: week view + filter po tipu + opcija “Clear all”.
+            <div className="mt-5 text-xs text-white/35">
+              Tip: klik na isti datum ponovno → skida filter.
+            </div>
+          </div>
+
+          {/* RIGHT: Monthly list + filter */}
+          <div className="lg:col-span-7 rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl shadow-2xl p-6 md:p-8">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-semibold ss-gold-text">
+                  {selectedDayISO ? "Events for day" : "Events this month"}
+                </h2>
+                <div className="text-xs text-white/40 mt-1">
+                  {selectedDayISO ? (
+                    <>
+                      Datum: <span className="text-white/60">{selectedDayLabel}</span>{" "}
+                      <button
+                        onClick={() => setSelectedDayISO(null)}
+                        className="ml-2 text-ss-gold hover:opacity-80"
+                      >
+                        Clear day
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      Filter:{" "}
+                      <span className="text-white/60">
+                        {FILTERS.find((f) => f.key === filterType)?.label}
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap justify-end gap-2">
+                {FILTERS.map((f) => (
+                  <button
+                    key={f.key}
+                    onClick={() => setFilterType(f.key)}
+                    className={[
+                      "rounded-xl px-3 py-2 text-[11px] font-semibold border transition",
+                      filterType === f.key
+                        ? "bg-[#d4af37] text-black border-[#d4af37]"
+                        : "bg-white/5 text-white/70 border-white/10 hover:bg-white/10",
+                    ].join(" ")}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {monthlyEvents.length === 0 ? (
+              <div className="mt-6 text-white/50 text-sm">
+                Nema eventa za odabrani filter{selectedDayISO ? " na ovaj datum" : " u ovom mjesecu"}.
+              </div>
+            ) : (
+              <div className="mt-6 space-y-3">
+                {monthlyEvents.map((e) => {
+                  const date =
+                    e.startDateDisplay ||
+                    formatISOToDDMMYYYY(e.startDate) ||
+                    e.startDate ||
+                    "";
+                  const time = e.startTime || "";
+
+                  return (
+                    <div
+                      key={e.id}
+                      className="rounded-2xl border border-white/10 bg-black/25 p-4 hover:border-ss-gold/30 transition"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <div className="font-semibold">{e.title || "Event"}</div>
+                          <div className="text-xs text-white/60 mt-1">
+                            {date} {time}
+                            {e.location ? ` • ${e.location}` : ""}
+                          </div>
+                          {e.withWhom ? (
+                            <div className="text-xs text-white/50 mt-1">
+                              S kime: {e.withWhom}
+                            </div>
+                          ) : null}
+                          {e.notes ? (
+                            <div className="text-xs text-white/50 mt-1">
+                              Napomena: {e.notes}
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div className="flex flex-col items-end gap-2">
+                          <div className="text-xs text-white/40">
+                            {TYPE_LABEL[e.type] || e.type || ""}
+                          </div>
+
+                          <button
+                            onClick={() => handleDelete(e.id)}
+                            className="rounded-xl px-3 py-1.5 text-xs font-semibold bg-white/5 text-white/70 border border-white/10 hover:bg-red-500/15 hover:border-red-400/30 hover:text-red-200 transition"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="mt-8 text-xs text-white/35">
+              Sljedeći korak: “Edit event” (uređivanje) + opcija “Clear all”.
+            </div>
           </div>
         </div>
       </div>
