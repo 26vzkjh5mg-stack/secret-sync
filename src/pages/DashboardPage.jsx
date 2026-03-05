@@ -13,6 +13,29 @@ function loadEventsSafe() {
   }
 }
 
+// NEW — helpers za tjedan (Mon–Sun)
+function weekStartMonday(date = new Date()) {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay(); // 0=Sun, 1=Mon...
+  const diff = (day === 0 ? -6 : 1) - day; // pomak na ponedjeljak
+  d.setDate(d.getDate() + diff);
+  return d;
+}
+
+function addDays(base, n) {
+  const d = new Date(base);
+  d.setDate(d.getDate() + n);
+  return d;
+}
+
+function isoFromDate(d) {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 // NEW (1) — kategorije koje želimo prikazati uvijek (4 komada)
 const CATEGORIES = [
   { key: "meet-greet", label: "MEET & GREET" },
@@ -77,6 +100,17 @@ export default function DashboardPage({ onLock, onOpen }) {
     event: nearestUpcomingByType(events, c.key),
   }));
 
+  // NEW — weekly dots iz localStorage (Mon–Sun)
+  const weekStart = weekStartMonday(new Date());
+  const todayISO = isoFromDate(new Date());
+
+  // Map: "YYYY-MM-DD" -> broj eventa taj dan
+  const eventsByDay = events.reduce((acc, e) => {
+    const key = e?.startDate; // ISO
+    if (key) acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+
   return (
     <div className="min-h-screen p-8">
       {/* HEADER */}
@@ -139,20 +173,47 @@ export default function DashboardPage({ onLock, onOpen }) {
           <h2 className="text-xl font-semibold ss-gold-text">Calendar</h2>
           <p className="text-sm text-white/60 mt-1">Weekly overview</p>
 
+          {/* WEEK HEADER: Mon..Sun + day-of-month */}
           <div className="mt-6 grid grid-cols-7 gap-2 text-xs text-center text-white/80">
-            {week.map((day) => (
-              <div key={day}>{day}</div>
-            ))}
+            {Array.from({ length: 7 }).map((_, i) => {
+              const dayDate = addDays(weekStart, i);
+              const iso = isoFromDate(dayDate);
+              const dayNumber = dayDate.getDate();
+              const isToday = iso === todayISO;
+
+              return (
+                <div key={iso} className="flex flex-col items-center">
+                  <span>{week[i]}</span>
+                  <span
+                    className={[
+                      "mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full",
+                      isToday
+                        ? "ring-1 ring-ss-gold/60 text-ss-gold"
+                        : "text-white/50",
+                    ].join(" ")}
+                  >
+                    {dayNumber}
+                  </span>
+                </div>
+              );
+            })}
           </div>
 
+          {/* WEEK GRID: dots from events */}
           <div className="mt-3 grid grid-cols-7 gap-2">
-            {Array.from({ length: 7 }).map((_, i) => (
-              <div key={i} className="h-10 rounded-lg bg-white/10 relative">
-                {(i === 1 || i === 4) && (
-                  <span className="absolute bottom-2 left-1/2 -translate-x-1/2 h-1.5 w-1.5 rounded-full bg-ss-gold" />
-                )}
-              </div>
-            ))}
+            {Array.from({ length: 7 }).map((_, i) => {
+              const dayDate = addDays(weekStart, i);
+              const iso = isoFromDate(dayDate);
+              const count = eventsByDay[iso] || 0;
+
+              return (
+                <div key={iso} className="h-10 rounded-lg bg-white/10 relative">
+                  {count > 0 && (
+                    <span className="absolute bottom-2 left-1/2 -translate-x-1/2 h-1.5 w-1.5 rounded-full bg-ss-gold" />
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           <div className="mt-6">

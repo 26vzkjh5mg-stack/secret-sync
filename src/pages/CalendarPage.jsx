@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 const KEY_EVENTS = "ss_events";
@@ -10,6 +10,14 @@ function loadEventsSafe() {
     return Array.isArray(arr) ? arr : [];
   } catch {
     return [];
+  }
+}
+
+function saveEventsSafe(events) {
+  try {
+    localStorage.setItem(KEY_EVENTS, JSON.stringify(events));
+  } catch {
+    // noop
   }
 }
 
@@ -29,12 +37,30 @@ function formatISOToDDMMYYYY(iso) {
 export default function CalendarPage() {
   const navigate = useNavigate();
 
-  const events = useMemo(() => {
+  // inicijalno učitaj + sortiraj
+  const [events, setEvents] = useState(() => {
     const arr = loadEventsSafe();
     return [...arr]
       .map((e) => ({ ...e, __ms: toMs(e) }))
       .sort((a, b) => a.__ms - b.__ms);
-  }, []);
+  });
+
+  const countText = useMemo(() => {
+    if (!events.length) return "0";
+    return String(events.length);
+  }, [events.length]);
+
+  function handleDelete(id) {
+    const target = events.find((x) => x.id === id);
+    const label = target?.title ? ` (${target.title})` : "";
+    const ok = window.confirm(`Obrisati event${label}?`);
+    if (!ok) return;
+
+    const next = events.filter((e) => e.id !== id);
+    // spremi bez __ms polja
+    saveEventsSafe(next.map(({ __ms, ...rest }) => rest));
+    setEvents(next);
+  }
 
   return (
     <div className="min-h-screen relative overflow-hidden">
@@ -68,8 +94,14 @@ export default function CalendarPage() {
 
         {/* Content */}
         <div className="mt-8 rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl shadow-2xl p-6 md:p-8">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold ss-gold-text">All events</h2>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-semibold ss-gold-text">All events</h2>
+              <div className="text-xs text-white/40 mt-1">
+                Ukupno: <span className="text-white/60">{countText}</span>
+              </div>
+            </div>
+
             <div className="text-xs text-white/40">
               localStorage: <span className="text-white/60">{KEY_EVENTS}</span>
             </div>
@@ -88,6 +120,7 @@ export default function CalendarPage() {
                   e.startDate ||
                   "";
                 const time = e.startTime || "";
+
                 return (
                   <div
                     key={e.id}
@@ -95,7 +128,9 @@ export default function CalendarPage() {
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div>
-                        <div className="font-semibold">{e.title || "Event"}</div>
+                        <div className="font-semibold">
+                          {e.title || "Event"}
+                        </div>
                         <div className="text-xs text-white/60 mt-1">
                           {date} {time}
                           {e.location ? ` • ${e.location}` : ""}
@@ -112,8 +147,17 @@ export default function CalendarPage() {
                         ) : null}
                       </div>
 
-                      <div className="text-xs text-white/40">
-                        {e.type || ""}
+                      <div className="flex flex-col items-end gap-2">
+                        <div className="text-xs text-white/40">
+                          {e.type || ""}
+                        </div>
+
+                        <button
+                          onClick={() => handleDelete(e.id)}
+                          className="rounded-xl px-3 py-1.5 text-xs font-semibold bg-white/5 text-white/70 border border-white/10 hover:bg-red-500/15 hover:border-red-400/30 hover:text-red-200 transition"
+                        >
+                          Delete
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -123,7 +167,7 @@ export default function CalendarPage() {
           )}
 
           <div className="mt-8 text-xs text-white/35">
-            Sljedeći korak: week view + “dots” na dashboardu + filter po tipu.
+            Sljedeći korak: week view + filter po tipu + opcija “Clear all”.
           </div>
         </div>
       </div>
