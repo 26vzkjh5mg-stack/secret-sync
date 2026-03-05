@@ -1,6 +1,47 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 
+const KEY_EVENTS = "ss_events";
+
+function loadEventsSafe() {
+  try {
+    const raw = localStorage.getItem(KEY_EVENTS);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
+// NEW (1) — kategorije koje želimo prikazati uvijek (4 komada)
+const CATEGORIES = [
+  { key: "meet-greet", label: "MEET & GREET" },
+  { key: "outdoor", label: "OUTDOOR" },
+  { key: "hanging-out", label: "HANGING OUT" },
+  { key: "party", label: "PARTY" },
+];
+
+// NEW (2) — pretvori event start u ms (za usporedbu/sort)
+function toMs(e) {
+  const d = e?.startDate; // ISO YYYY-MM-DD
+  const t = e?.startTime || "00:00";
+  const ms = new Date(`${d}T${t}`).getTime();
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+// NEW (3) — uzmi najbliži budući event za zadani type
+function nearestUpcomingByType(events, typeKey) {
+  const now = Date.now();
+
+  const filtered = events
+    .filter((e) => e?.type === typeKey)
+    .map((e) => ({ ...e, __ms: toMs(e) }))
+    .filter((e) => e.__ms >= now);
+
+  filtered.sort((a, b) => a.__ms - b.__ms); // nearest first
+  return filtered[0] || null;
+}
+
 export default function DashboardPage({ onLock, onOpen }) {
   const navigate = useNavigate();
 
@@ -28,11 +69,18 @@ export default function DashboardPage({ onLock, onOpen }) {
     }
   };
 
+  const events = loadEventsSafe();
+
+  // NEW (4) — 1 event po kategoriji (najbliži budući po datumu)
+  const upcomingByCategory = CATEGORIES.map((c) => ({
+    ...c,
+    event: nearestUpcomingByType(events, c.key),
+  }));
+
   return (
     <div className="min-h-screen p-8">
       {/* HEADER */}
       <div className="max-w-6xl mx-auto flex justify-between items-center">
-        {/* Left: Logo + Title */}
         <div className="flex items-center gap-3">
           <img
             src="/Logo.png"
@@ -70,7 +118,6 @@ export default function DashboardPage({ onLock, onOpen }) {
               />
 
               <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-black/20" />
-
               <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition bg-[radial-gradient(700px_260px_at_50%_30%,rgba(212,175,55,0.18),transparent_60%)]" />
 
               <div className="ss-card-center">
@@ -112,9 +159,23 @@ export default function DashboardPage({ onLock, onOpen }) {
             <p className="text-xs ss-gold-text">UPCOMING EVENTS</p>
 
             <div className="mt-3 space-y-2 text-sm">
-              <div className="bg-white/10 p-2 rounded-lg">Meet & Greet</div>
-              <div className="bg-white/10 p-2 rounded-lg">Outdoor</div>
-              <div className="bg-white/10 p-2 rounded-lg">Party</div>
+              {upcomingByCategory.map((row) => (
+                <div key={row.key} className="bg-white/10 p-2 rounded-lg">
+                  <div className="font-semibold">{row.label}</div>
+
+                  {row.event ? (
+                    <div className="text-xs text-white/60">
+                      {(row.event.startDateDisplay || row.event.startDate) || ""}{" "}
+                      {row.event.startTime || ""}
+                      {row.event.location ? ` • ${row.event.location}` : ""}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-white/40">
+                      Nema upcoming eventa
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
         </button>
