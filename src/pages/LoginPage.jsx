@@ -1,45 +1,68 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-const KEY_SESSION = "ss_session_nickname";
+const KEY_LOGIN_NICKNAME = "ss_login_nickname";
+const KEY_SESSION_NICKNAME = "ss_session_nickname";
 const KEY_PIN = "ss_session_pin";
 
 export default function LoginPage() {
   const navigate = useNavigate();
 
-  const storedPin = localStorage.getItem(KEY_PIN);
+  const storedNickname = localStorage.getItem(KEY_LOGIN_NICKNAME) || "";
+  const storedPin = localStorage.getItem(KEY_PIN) || "";
+
+  const isFirstSetup = !storedNickname || !storedPin;
 
   const [nickname, setNickname] = useState("");
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
 
-  const isFirstSetup = !storedPin;
   const canContinue = nickname.trim().length > 0 && pin.length === 4;
 
+  function handleNicknameChange(e) {
+    setNickname(e.target.value);
+    if (error) setError("");
+  }
+
   function handlePinChange(e) {
-    const v = e.target.value.replace(/\D/g, "").slice(0, 4);
-    setPin(v);
+    const value = e.target.value.replace(/\D/g, "").slice(0, 4);
+    setPin(value);
     if (error) setError("");
   }
 
   function onContinue() {
     if (!canContinue) return;
 
-    const nick = nickname.trim();
+    const cleanNickname = nickname.trim();
 
     if (isFirstSetup) {
-      localStorage.setItem(KEY_SESSION, nick);
+      localStorage.setItem(KEY_LOGIN_NICKNAME, cleanNickname);
+      localStorage.setItem(KEY_SESSION_NICKNAME, cleanNickname);
       localStorage.setItem(KEY_PIN, pin);
-      navigate("/dashboard");
+      navigate("/dashboard", { replace: true });
       return;
     }
 
-    if (pin === storedPin) {
-      localStorage.setItem(KEY_SESSION, nick);
-      navigate("/dashboard");
-    } else {
-      setError("Pogrešan PIN");
+    const nicknameMatches = cleanNickname === storedNickname;
+    const pinMatches = pin === storedPin;
+
+    if (!nicknameMatches && !pinMatches) {
+      setError("Nickname i PIN nisu ispravni.");
+      return;
     }
+
+    if (!nicknameMatches) {
+      setError("Ovaj nickname ne odgovara postojećem korisniku na ovom uređaju.");
+      return;
+    }
+
+    if (!pinMatches) {
+      setError("PIN nije ispravan.");
+      return;
+    }
+
+    localStorage.setItem(KEY_SESSION_NICKNAME, cleanNickname);
+    navigate("/dashboard", { replace: true });
   }
 
   return (
@@ -57,12 +80,12 @@ export default function LoginPage() {
             />
             <div>
               <div className="ss-title-lux text-2xl leading-tight">
-                {isFirstSetup ? "Create PIN" : "Login"}
+                {isFirstSetup ? "Create Login" : "Login"}
               </div>
               <div className="text-white/60 text-sm">
                 {isFirstSetup
-                  ? "Postavi diskretan pristup aplikaciji"
-                  : "Diskretan pristup (nickname + PIN)"}
+                  ? "Postavi nickname i PIN za diskretan pristup"
+                  : "Unesi svoj nickname i PIN"}
               </div>
             </div>
           </div>
@@ -72,8 +95,8 @@ export default function LoginPage() {
           </label>
           <input
             value={nickname}
-            onChange={(e) => setNickname(e.target.value)}
-            placeholder="npr. Luna_77"
+            onChange={handleNicknameChange}
+            placeholder="npr. Diana"
             className="w-full mb-4 rounded-2xl bg-black/30 border border-white/10 px-4 py-3 text-white placeholder:text-white/30 outline-none focus:border-white/25"
           />
 
@@ -90,13 +113,15 @@ export default function LoginPage() {
           />
 
           {error && (
-            <div className="text-xs text-red-400 mb-3">{error}</div>
+            <div className="mb-3 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-xs text-red-200">
+              {error}
+            </div>
           )}
 
           <div className="text-xs text-white/45 mb-5">
             {isFirstSetup
-              ? "PIN se sada postavlja prvi put i sprema lokalno na uređaj."
-              : "Unesi postojeći PIN za pristup aplikaciji."}
+              ? "Ovaj nickname i PIN spremaju se lokalno na uređaj i koristit će se za buduće prijave."
+              : "Za ulaz moraš unijeti isti nickname i isti PIN koji su postavljeni prvi put."}
           </div>
 
           <button
@@ -109,11 +134,11 @@ export default function LoginPage() {
                 : "bg-white/10 text-white/40 cursor-not-allowed",
             ].join(" ")}
           >
-            {isFirstSetup ? "Postavi PIN i nastavi" : "Nastavi na Dashboard"}
+            {isFirstSetup ? "Spremi i nastavi" : "Otvori SecretSync"}
           </button>
 
           <div className="mt-4 text-xs text-white/35">
-            Tip: koristi nadimke, ne stvarne identitete.
+            Tip: koristi nadimak koji ćeš zapamtiti. Reset PIN-a ćemo dodati bez brisanja evenata.
           </div>
         </div>
       </div>
