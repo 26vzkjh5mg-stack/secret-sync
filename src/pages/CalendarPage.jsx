@@ -3,11 +3,31 @@ import { useNavigate } from "react-router-dom";
 
 const KEY_EVENTS = "ss_events";
 
-const TYPE_LABEL = {
-  "meet-greet": "MEET & GREET",
-  outdoor: "OUTDOOR",
-  "hanging-out": "HANGING OUT",
-  party: "PARTY",
+const TYPE_META = {
+  "meet-greet": {
+    label: "MEET & GREET",
+    badgeClass:
+      "text-[#d4af37] bg-[#d4af37]/10 border border-[#d4af37]/25",
+    dotClass: "bg-[#d4af37]",
+  },
+  outdoor: {
+    label: "OUTDOOR",
+    badgeClass:
+      "text-[#2f8f7b] bg-[#2f8f7b]/10 border border-[#2f8f7b]/25",
+    dotClass: "bg-[#2f8f7b]",
+  },
+  "hanging-out": {
+    label: "HANGING OUT",
+    badgeClass:
+      "text-[#7a6bb8] bg-[#7a6bb8]/10 border border-[#7a6bb8]/25",
+    dotClass: "bg-[#7a6bb8]",
+  },
+  party: {
+    label: "PARTY",
+    badgeClass:
+      "text-[#b24c63] bg-[#b24c63]/10 border border-[#b24c63]/25",
+    dotClass: "bg-[#b24c63]",
+  },
 };
 
 const FILTERS = [
@@ -68,6 +88,17 @@ function formatEventTimeRange(eventObj) {
 
   if (start && end) return `${start} – ${end}`;
   return start || end || "";
+}
+
+function getDayDotClass(eventsForDay, filterType) {
+  if (!eventsForDay?.length) return "bg-ss-gold";
+
+  if (filterType !== "all" && TYPE_META[filterType]) {
+    return TYPE_META[filterType].dotClass;
+  }
+
+  const firstTypedEvent = eventsForDay.find((e) => TYPE_META[e?.type]);
+  return firstTypedEvent ? TYPE_META[firstTypedEvent.type].dotClass : "bg-ss-gold";
 }
 
 // ---------- ICS helpers ----------
@@ -180,6 +211,22 @@ function downloadTextFile(filename, content, mime = "text/calendar;charset=utf-8
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
+function TypeBadge({ type }) {
+  const meta = TYPE_META[type];
+  if (!meta) return null;
+
+  return (
+    <span
+      className={[
+        "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold tracking-[0.08em]",
+        meta.badgeClass,
+      ].join(" ")}
+    >
+      {meta.label}
+    </span>
+  );
+}
+
 export default function CalendarPage() {
   const navigate = useNavigate();
 
@@ -251,7 +298,7 @@ export default function CalendarPage() {
     const ics = buildICSForEvent(e);
     const datePart = e?.startDate ? String(e.startDate).split("-").join("") : "date";
     const titlePart = safeFileName(
-      e?.isPrivate ? "Private_Event" : e?.title || TYPE_LABEL[e?.type] || "SecretSync"
+      e?.isPrivate ? "Private_Event" : e?.title || TYPE_META[e?.type]?.label || "SecretSync"
     );
     const fileName = `SecretSync_${datePart}_${titlePart}.ics`;
     downloadTextFile(fileName, ics);
@@ -284,7 +331,8 @@ export default function CalendarPage() {
     for (const e of events) {
       const key = e?.startDate;
       if (!key) continue;
-      map[key] = (map[key] || 0) + 1;
+      if (!map[key]) map[key] = [];
+      map[key].push(e);
     }
     return map;
   }, [events]);
@@ -383,7 +431,6 @@ export default function CalendarPage() {
       <div className="absolute inset-0 -z-10 opacity-70 bg-[radial-gradient(ellipse_at_top,rgba(255,215,120,0.16),rgba(0,0,0,0)_55%)]" />
 
       <div className="max-w-6xl mx-auto px-6 py-10 text-white">
-        {/* HEADER */}
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <img
@@ -408,7 +455,6 @@ export default function CalendarPage() {
         </div>
 
         <div className="mt-8 grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* LEFT CALENDAR */}
           <div className="lg:col-span-5 rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl shadow-2xl p-6 md:p-8">
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -451,7 +497,9 @@ export default function CalendarPage() {
                 const iso = isoFromDate(d);
                 const isToday = iso === todayISO;
                 const isSelected = iso === selectedDayISO;
-                const count = eventsCountByDay[iso] || 0;
+                const dayEvents = eventsCountByDay[iso] || [];
+                const count = dayEvents.length;
+                const dotClass = getDayDotClass(dayEvents, filterType);
 
                 return (
                   <button
@@ -467,7 +515,12 @@ export default function CalendarPage() {
                     <span className={isToday ? "text-ss-gold" : "text-white/80"}>{dayNum}</span>
 
                     {count > 0 && (
-                      <span className="absolute bottom-2 left-1/2 -translate-x-1/2 h-1.5 w-1.5 rounded-full bg-ss-gold" />
+                      <span
+                        className={[
+                          "absolute bottom-2 left-1/2 -translate-x-1/2 h-1.5 w-1.5 rounded-full",
+                          dotClass,
+                        ].join(" ")}
+                      />
                     )}
                   </button>
                 );
@@ -475,7 +528,6 @@ export default function CalendarPage() {
             </div>
           </div>
 
-          {/* RIGHT EVENT LIST */}
           <div className="lg:col-span-7 rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl shadow-2xl p-6 md:p-8">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -549,12 +601,15 @@ export default function CalendarPage() {
                       className="rounded-2xl border border-white/10 bg-black/25 p-4 hover:border-ss-gold/30 transition"
                     >
                       <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <div className="font-semibold">
-                            {e.isPrivate ? "🔒 Private event" : e.title || "Event"}
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <div className="font-semibold">
+                              {e.isPrivate ? "🔒 Private event" : e.title || "Event"}
+                            </div>
+                            <TypeBadge type={e.type} />
                           </div>
 
-                          <div className="text-xs text-white/60 mt-1">
+                          <div className="text-xs text-white/60 mt-2">
                             {date}
                             {timeRange ? ` ${timeRange}` : ""}
                             {!e.isPrivate && e.location ? ` • ${e.location}` : ""}
@@ -574,7 +629,9 @@ export default function CalendarPage() {
                         </div>
 
                         <div className="flex flex-col items-end gap-2">
-                          <div className="text-xs text-white/40">{TYPE_LABEL[e.type] || e.type}</div>
+                          <div className="text-xs text-white/35">
+                            {TYPE_META[e.type]?.label || e.type}
+                          </div>
 
                           <div className="flex gap-2 flex-wrap justify-end">
                             <button
@@ -610,7 +667,6 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {/* UNDO TOAST */}
       {undoState && (
         <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 px-4 w-full max-w-md">
           <div className="rounded-2xl border border-white/10 bg-black/50 backdrop-blur-xl shadow-2xl px-4 py-3 flex items-center justify-between gap-3">

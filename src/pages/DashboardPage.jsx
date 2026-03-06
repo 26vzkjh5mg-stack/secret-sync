@@ -17,8 +17,8 @@ function loadEventsSafe() {
 function weekStartMonday(date = new Date()) {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
-  const day = d.getDay(); // 0=Sun, 1=Mon...
-  const diff = (day === 0 ? -6 : 1) - day; // pomak na ponedjeljak
+  const day = d.getDay();
+  const diff = (day === 0 ? -6 : 1) - day;
   d.setDate(d.getDate() + diff);
   return d;
 }
@@ -36,12 +36,37 @@ function isoFromDate(d) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-const CATEGORIES = [
-  { key: "meet-greet", label: "MEET & GREET" },
-  { key: "outdoor", label: "OUTDOOR" },
-  { key: "hanging-out", label: "HANGING OUT" },
-  { key: "party", label: "PARTY" },
-];
+const TYPE_META = {
+  "meet-greet": {
+    label: "MEET & GREET",
+    badgeClass:
+      "text-[#d4af37] bg-[#d4af37]/10 border border-[#d4af37]/25",
+    dotClass: "bg-[#d4af37]",
+  },
+  outdoor: {
+    label: "OUTDOOR",
+    badgeClass:
+      "text-[#2f8f7b] bg-[#2f8f7b]/10 border border-[#2f8f7b]/25",
+    dotClass: "bg-[#2f8f7b]",
+  },
+  "hanging-out": {
+    label: "HANGING OUT",
+    badgeClass:
+      "text-[#7a6bb8] bg-[#7a6bb8]/10 border border-[#7a6bb8]/25",
+    dotClass: "bg-[#7a6bb8]",
+  },
+  party: {
+    label: "PARTY",
+    badgeClass:
+      "text-[#b24c63] bg-[#b24c63]/10 border border-[#b24c63]/25",
+    dotClass: "bg-[#b24c63]",
+  },
+};
+
+const CATEGORIES = Object.entries(TYPE_META).map(([key, value]) => ({
+  key,
+  label: value.label,
+}));
 
 function toMs(e) {
   const d = e?.startDate;
@@ -184,7 +209,23 @@ function downloadTextFile(
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-export default function DashboardPage({ onLock, onOpen }) {
+function TypeBadge({ type }) {
+  const meta = TYPE_META[type];
+  if (!meta) return null;
+
+  return (
+    <span
+      className={[
+        "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold tracking-[0.08em]",
+        meta.badgeClass,
+      ].join(" ")}
+    >
+      {meta.label}
+    </span>
+  );
+}
+
+export default function DashboardPage({ onLock }) {
   const navigate = useNavigate();
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const quickAddRef = useRef(null);
@@ -276,7 +317,6 @@ export default function DashboardPage({ onLock, onOpen }) {
 
   return (
     <div className="min-h-screen px-4 py-6 sm:px-6 sm:py-8">
-      {/* HEADER */}
       <div className="max-w-6xl mx-auto flex justify-between items-center gap-4">
         <div className="flex items-center gap-3 min-w-0">
           <img
@@ -332,9 +372,7 @@ export default function DashboardPage({ onLock, onOpen }) {
         </div>
       </div>
 
-      {/* GRID */}
       <div className="max-w-6xl mx-auto mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* ACTIVITY CARDS */}
         <div className="order-1 md:order-1 md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6">
           {activityCards.map((card) => (
             <button
@@ -362,7 +400,6 @@ export default function DashboardPage({ onLock, onOpen }) {
           ))}
         </div>
 
-        {/* CALENDAR CARD */}
         <div
           role="button"
           tabIndex={0}
@@ -373,7 +410,6 @@ export default function DashboardPage({ onLock, onOpen }) {
           <h2 className="text-xl font-semibold ss-gold-text">Calendar</h2>
           <p className="text-sm text-white/60 mt-1">Weekly overview</p>
 
-          {/* WEEK HEADER */}
           <div className="mt-6 grid grid-cols-7 gap-2 text-xs text-center text-white/80">
             {Array.from({ length: 7 }).map((_, i) => {
               const dayDate = addDays(weekStart, i);
@@ -399,7 +435,6 @@ export default function DashboardPage({ onLock, onOpen }) {
             })}
           </div>
 
-          {/* WEEK GRID */}
           <div className="mt-3 grid grid-cols-7 gap-2">
             {Array.from({ length: 7 }).map((_, i) => {
               const dayDate = addDays(weekStart, i);
@@ -429,14 +464,17 @@ export default function DashboardPage({ onLock, onOpen }) {
                     key={row.key}
                     className="w-full text-left bg-white/10 p-3 rounded-lg border border-white/10 hover:border-ss-gold/30 hover:bg-white/15 transition"
                   >
-                    <div className="font-semibold">{row.label}</div>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="font-semibold">{row.label}</div>
+                      <TypeBadge type={row.event.type} />
+                    </div>
 
                     {row.event.isPrivate ? (
-                      <div className="text-xs text-ss-gold mt-1">
+                      <div className="text-xs text-ss-gold mt-2">
                         🔒 Private event
                       </div>
                     ) : (
-                      <div className="text-xs text-white/60 mt-1">
+                      <div className="text-xs text-white/60 mt-2">
                         {(row.event.startDateDisplay || row.event.startDate) || ""}
                         {formatEventTimeRange(row.event)
                           ? ` ${formatEventTimeRange(row.event)}`
@@ -475,9 +513,12 @@ export default function DashboardPage({ onLock, onOpen }) {
                     key={row.key}
                     className="bg-white/10 p-3 rounded-lg"
                   >
-                    <div className="font-semibold">{row.label}</div>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="font-semibold">{row.label}</div>
+                      <TypeBadge type={row.key} />
+                    </div>
 
-                    <div className="text-xs text-white/40 mt-1">
+                    <div className="text-xs text-white/40 mt-2">
                       Nema upcoming eventa
                     </div>
                   </div>
