@@ -6,27 +6,44 @@ const KEY_PIN = "ss_session_pin";
 
 export default function LoginPage() {
   const navigate = useNavigate();
+
+  const storedPin = localStorage.getItem(KEY_PIN);
+
   const [nickname, setNickname] = useState("");
   const [pin, setPin] = useState("");
+  const [error, setError] = useState("");
 
+  const isFirstSetup = !storedPin;
   const canContinue = nickname.trim().length > 0 && pin.length === 4;
 
   function handlePinChange(e) {
-    // samo 0-9, max 4
     const v = e.target.value.replace(/\D/g, "").slice(0, 4);
     setPin(v);
+    if (error) setError("");
   }
 
   function onContinue() {
     if (!canContinue) return;
-    localStorage.setItem(KEY_SESSION, nickname.trim());
-    localStorage.setItem(KEY_PIN, pin);
-    navigate("/dashboard");
+
+    const nick = nickname.trim();
+
+    if (isFirstSetup) {
+      localStorage.setItem(KEY_SESSION, nick);
+      localStorage.setItem(KEY_PIN, pin);
+      navigate("/dashboard");
+      return;
+    }
+
+    if (pin === storedPin) {
+      localStorage.setItem(KEY_SESSION, nick);
+      navigate("/dashboard");
+    } else {
+      setError("Pogrešan PIN");
+    }
   }
 
   return (
     <div className="min-h-screen relative overflow-hidden">
-      {/* Background */}
       <div className="absolute inset-0 -z-10 bg-[#0b0b0f]" />
       <div className="absolute inset-0 -z-10 opacity-70 bg-[radial-gradient(ellipse_at_top,rgba(255,215,120,0.16),rgba(0,0,0,0)_55%)]" />
 
@@ -39,9 +56,13 @@ export default function LoginPage() {
               className="h-10 w-10 rounded-xl object-contain"
             />
             <div>
-              <div className="ss-title-lux text-2xl leading-tight">Login</div>
+              <div className="ss-title-lux text-2xl leading-tight">
+                {isFirstSetup ? "Create PIN" : "Login"}
+              </div>
               <div className="text-white/60 text-sm">
-                Diskretan pristup (nickname + PIN)
+                {isFirstSetup
+                  ? "Postavi diskretan pristup aplikaciji"
+                  : "Diskretan pristup (nickname + PIN)"}
               </div>
             </div>
           </div>
@@ -68,8 +89,14 @@ export default function LoginPage() {
             className="w-full mb-2 rounded-2xl bg-black/30 border border-white/10 px-4 py-3 text-white placeholder:text-white/30 outline-none focus:border-white/25 tracking-widest"
           />
 
+          {error && (
+            <div className="text-xs text-red-400 mb-3">{error}</div>
+          )}
+
           <div className="text-xs text-white/45 mb-5">
-            PIN je lokalno na uređaju (za diskreciju). Kasnije možemo dodati jaču zaštitu.
+            {isFirstSetup
+              ? "PIN se sada postavlja prvi put i sprema lokalno na uređaj."
+              : "Unesi postojeći PIN za pristup aplikaciji."}
           </div>
 
           <button
@@ -82,7 +109,7 @@ export default function LoginPage() {
                 : "bg-white/10 text-white/40 cursor-not-allowed",
             ].join(" ")}
           >
-            Nastavi na Dashboard
+            {isFirstSetup ? "Postavi PIN i nastavi" : "Nastavi na Dashboard"}
           </button>
 
           <div className="mt-4 text-xs text-white/35">
