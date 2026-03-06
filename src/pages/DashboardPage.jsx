@@ -62,6 +62,120 @@ function nearestUpcomingByType(events, typeKey) {
   return filtered[0] || null;
 }
 
+// ---------- ICS helpers ----------
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
+function formatICSDateUTC(dateObj) {
+  const y = dateObj.getUTCFullYear();
+  const m = pad2(dateObj.getUTCMonth() + 1);
+  const d = pad2(dateObj.getUTCDate());
+  const hh = pad2(dateObj.getUTCHours());
+  const mm = pad2(dateObj.getUTCMinutes());
+  const ss = pad2(dateObj.getUTCSeconds());
+  return `${y}${m}${d}T${hh}${mm}${ss}Z`;
+}
+
+function escapeICS(text) {
+  return String(text || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/;/g, "\\;")
+    .replace(/,/g, "\\,")
+    .replace(/\r?\n/g, "\\n");
+}
+
+function safeFileName(s) {
+  return (
+    String(s || "event")
+      .trim()
+      .replace(/[<>:"/\\|?*\x00-\x1F]/g, "")
+      .replace(/\s+/g, "_")
+      .slice(0, 60) || "event"
+  );
+}
+
+function buildICSForEvent(e) {
+  const startDate = e?.startDate;
+  const startTime = e?.startTime || "00:00";
+  const start = new Date(`${startDate}T${startTime}`);
+  const startValid = Number.isFinite(start.getTime());
+
+  const endDate = e?.endDate || startDate;
+  const endTime = e?.endTime || "";
+  let end;
+
+  if (endTime) {
+    end = new Date(`${endDate}T${endTime}`);
+  } else if (startValid) {
+    end = new Date(start.getTime() + 60 * 60 * 1000);
+  } else {
+    end = new Date();
+  }
+
+  const uid =
+    `${e?.id || globalThis.crypto?.randomUUID?.() || Date.now()}@secret-sync`;
+  const dtstamp = formatICSDateUTC(new Date());
+  const dtstart = formatICSDateUTC(startValid ? start : new Date());
+  const dtend = formatICSDateUTC(
+    Number.isFinite(end.getTime()) ? end : new Date()
+  );
+
+  const summary = escapeICS(
+    e?.isPrivate ? "Private event" : e?.title || "Secret Sync Event"
+  );
+  const location = escapeICS(e?.isPrivate ? "" : e?.location || "");
+  const descriptionParts = [];
+
+  if (!e?.isPrivate) {
+    if (e?.withWhom) descriptionParts.push(`S kime: ${e.withWhom}`);
+    if (e?.notes) descriptionParts.push(`Napomena: ${e.notes}`);
+  } else {
+    descriptionParts.push("Private event");
+  }
+
+  const description = escapeICS(descriptionParts.join("\n"));
+
+  const lines = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Secret Sync//EN",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    "BEGIN:VEVENT",
+    `UID:${uid}`,
+    `DTSTAMP:${dtstamp}`,
+    `DTSTART:${dtstart}`,
+    `DTEND:${dtend}`,
+    `SUMMARY:${summary}`,
+  ];
+
+  if (location) lines.push(`LOCATION:${location}`);
+  if (description) lines.push(`DESCRIPTION:${description}`);
+
+  lines.push("END:VEVENT", "END:VCALENDAR");
+
+  return lines.join("\r\n");
+}
+
+function downloadTextFile(
+  filename,
+  content,
+  mime = "text/calendar;charset=utf-8"
+) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
 export default function DashboardPage({ onLock, onOpen }) {
   const navigate = useNavigate();
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
@@ -130,6 +244,27 @@ export default function DashboardPage({ onLock, onOpen }) {
     if (key) acc[key] = (acc[key] || 0) + 1;
     return acc;
   }, {});
+
+  function handleExportICS(eventObj) {
+    const ics = buildICSForEvent(eventObj);
+    const datePart = eventObj?.startDate
+      ? String(eventObj.startDate).split("-").join("")
+      : "date";
+    const titlePart = safeFileName(
+      eventObj?.isPrivate
+        ? "Private_Event"
+        : eventObj?.title || eventObj?.type || "SecretSync"
+    );
+    const fileName = `SecretSync_${datePart}_${titlePart}.ics`;
+    downloadTextFile(fileName, ics);
+  }
+
+  function handleCalendarCardKeyDown(e) {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      navigate("/calendar");
+    }
+  }
 
   return (
     <div className="min-h-screen px-4 py-6 sm:px-6 sm:py-8">
@@ -220,9 +355,12 @@ export default function DashboardPage({ onLock, onOpen }) {
         </div>
 
         {/* CALENDAR CARD */}
-        <button
+        <div
+          role="button"
+          tabIndex={0}
           onClick={() => navigate("/calendar")}
-          className="order-2 md:order-2 rounded-3xl border border-white/10 bg-white/5 p-5 sm:p-6 text-left hover:border-ss-gold/40 transition"
+          onKeyDown={handleCalendarCardKeyDown}
+          className="order-2 md:order-2 rounded-3xl border border-white/10 bg-white/5 p-5 sm:p-6 text-left hover:border-ss-gold/40 transition cursor-pointer"
         >
           <h2 className="text-xl font-semibold ss-gold-text">Calendar</h2>
           <p className="text-sm text-white/60 mt-1">Weekly overview</p>
@@ -279,13 +417,8 @@ export default function DashboardPage({ onLock, onOpen }) {
             <div className="mt-3 space-y-2 text-sm">
               {upcomingByCategory.map((row) =>
                 row.event ? (
-                  <button
+                  <div
                     key={row.key}
-                    type="button"
-                    onClick={(ev) => {
-                      ev.stopPropagation();
-                      navigate(`/activity/${row.event.type}/edit/${row.event.id}`);
-                    }}
                     className="w-full text-left bg-white/10 p-3 rounded-lg border border-white/10 hover:border-ss-gold/30 hover:bg-white/15 transition"
                   >
                     <div className="font-semibold">{row.label}</div>
@@ -301,7 +434,32 @@ export default function DashboardPage({ onLock, onOpen }) {
                         {row.event.location ? ` • ${row.event.location}` : ""}
                       </div>
                     )}
-                  </button>
+
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          navigate(`/activity/${row.event.type}/edit/${row.event.id}`);
+                        }}
+                        className="rounded-xl px-3 py-1.5 text-xs font-semibold bg-white/5 text-white/70 border border-white/10 hover:bg-blue-500/15 hover:border-blue-400/30 hover:text-blue-200 transition"
+                      >
+                        Edit
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          handleExportICS(row.event);
+                        }}
+                        className="rounded-xl px-3 py-1.5 text-xs font-semibold bg-white/5 text-white/70 border border-white/10 hover:bg-ss-gold/15 hover:border-ss-gold/30 hover:text-ss-gold transition"
+                        title="Export to private calendar (.ics)"
+                      >
+                        To Private Calendar
+                      </button>
+                    </div>
+                  </div>
                 ) : (
                   <div
                     key={row.key}
@@ -317,7 +475,7 @@ export default function DashboardPage({ onLock, onOpen }) {
               )}
             </div>
           </div>
-        </button>
+        </div>
       </div>
     </div>
   );

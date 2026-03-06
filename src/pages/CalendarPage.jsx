@@ -113,12 +113,17 @@ function buildICSForEvent(e) {
     end = new Date();
   }
 
-  const uid = `${e?.id || crypto?.randomUUID?.() || Date.now()}@secret-sync`;
+  const uid =
+    `${e?.id || globalThis.crypto?.randomUUID?.() || Date.now()}@secret-sync`;
   const dtstamp = formatICSDateUTC(new Date());
   const dtstart = formatICSDateUTC(startValid ? start : new Date());
-  const dtend = formatICSDateUTC(Number.isFinite(end.getTime()) ? end : new Date());
+  const dtend = formatICSDateUTC(
+    Number.isFinite(end.getTime()) ? end : new Date()
+  );
 
-  const summary = escapeICS(e?.isPrivate ? "Private event" : e?.title || "Secret Sync Event");
+  const summary = escapeICS(
+    e?.isPrivate ? "Private event" : e?.title || "Secret Sync Event"
+  );
   const location = escapeICS(e?.isPrivate ? "" : e?.location || "");
   const descriptionParts = [];
 
