@@ -217,26 +217,38 @@ export default function DashboardPage({ onLock, onOpen }) {
             <p className="text-xs ss-gold-text tracking-wide">UPCOMING EVENTS</p>
 
             <div className="mt-3 space-y-2 text-sm">
-              {upcomingByCategory.map((row) => (
-                <div
-                  key={row.key}
-                  className="bg-white/10 p-3 rounded-lg"
-                >
-                  <div className="font-semibold">{row.label}</div>
+              {upcomingByCategory.map((row) =>
+                row.event ? (
+                  <button
+                    key={row.key}
+                    type="button"
+                    onClick={(ev) => {
+                      ev.stopPropagation();
+                      navigate(`/activity/${row.event.type}/edit/${row.event.id}`);
+                    }}
+                    className="w-full text-left bg-white/10 p-3 rounded-lg border border-white/10 hover:border-ss-gold/30 hover:bg-white/15 transition"
+                  >
+                    <div className="font-semibold">{row.label}</div>
 
-                  {row.event ? (
                     <div className="text-xs text-white/60 mt-1">
                       {(row.event.startDateDisplay || row.event.startDate) || ""}{" "}
                       {row.event.startTime || ""}
                       {row.event.location ? ` • ${row.event.location}` : ""}
                     </div>
-                  ) : (
+                  </button>
+                ) : (
+                  <div
+                    key={row.key}
+                    className="bg-white/10 p-3 rounded-lg"
+                  >
+                    <div className="font-semibold">{row.label}</div>
+
                     <div className="text-xs text-white/40 mt-1">
                       Nema upcoming eventa
                     </div>
-                  )}
-                </div>
-              ))}
+                  </div>
+                )
+              )}
             </div>
           </div>
         </button>
