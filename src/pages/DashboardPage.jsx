@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 const KEY_EVENTS = "ss_events";
@@ -64,6 +64,30 @@ function nearestUpcomingByType(events, typeKey) {
 
 export default function DashboardPage({ onLock, onOpen }) {
   const navigate = useNavigate();
+  const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
+  const quickAddRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (quickAddRef.current && !quickAddRef.current.contains(event.target)) {
+        setIsQuickAddOpen(false);
+      }
+    }
+
+    function handleEscape(event) {
+      if (event.key === "Escape") {
+        setIsQuickAddOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, []);
 
   const activityCards = [
     { id: "meet", title: "MEET & GREET", img: "/cards/meet.jpg" },
@@ -88,6 +112,8 @@ export default function DashboardPage({ onLock, onOpen }) {
         return "/dashboard";
     }
   };
+
+  const routeForTypeKey = (typeKey) => `/activity/${typeKey}/new`;
 
   const events = loadEventsSafe();
 
@@ -121,12 +147,46 @@ export default function DashboardPage({ onLock, onOpen }) {
           </h1>
         </div>
 
-        <button
-          onClick={onLock}
-          className="shrink-0 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 transition"
-        >
-          Lock
-        </button>
+        <div className="flex items-center gap-3">
+          <div className="relative" ref={quickAddRef}>
+            <button
+              type="button"
+              onClick={() => setIsQuickAddOpen((prev) => !prev)}
+              className="shrink-0 px-4 py-2 rounded-xl bg-ss-gold text-black font-semibold hover:opacity-90 transition"
+            >
+              + New
+            </button>
+
+            {isQuickAddOpen && (
+              <div className="absolute right-0 mt-2 w-56 rounded-2xl border border-white/10 bg-[#121218]/95 backdrop-blur-xl shadow-2xl p-2 z-50">
+                <div className="px-3 py-2 text-[11px] font-semibold tracking-wide text-white/50">
+                  QUICK ADD
+                </div>
+
+                {CATEGORIES.map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => {
+                      setIsQuickAddOpen(false);
+                      navigate(routeForTypeKey(item.key));
+                    }}
+                    className="w-full text-left rounded-xl px-3 py-2.5 text-sm font-medium text-white/80 hover:bg-white/10 hover:text-ss-gold transition"
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={onLock}
+            className="shrink-0 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 transition"
+          >
+            Lock
+          </button>
+        </div>
       </div>
 
       {/* GRID */}
