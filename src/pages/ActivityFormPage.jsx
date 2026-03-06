@@ -19,6 +19,7 @@ function loadEvents() {
     return [];
   }
 }
+
 function saveEvents(events) {
   localStorage.setItem(KEY_EVENTS, JSON.stringify(events));
 }
@@ -66,6 +67,71 @@ function toDateTimeMs(isoDate, timeHHMM) {
   return new Date(y, m - 1, d, hh, mm, 0, 0).getTime();
 }
 
+function formatDateTimeDisplay(dateDisplay, timeValue) {
+  const datePart = dateDisplay || "";
+  const timePart = timeValue || "";
+  return `${datePart} ${timePart}`.trim();
+}
+
+function getEventDisplayName(eventObj) {
+  if (!eventObj) return "Event";
+  if (eventObj.isPrivate) return "🔒 Private event";
+  return eventObj.withWhom?.trim() || eventObj.title || "Event";
+}
+
+function findOverlappingEvents(candidateEvent, allEvents, excludeId = null) {
+  const candidateStartMs = toDateTimeMs(
+    candidateEvent.startDate,
+    candidateEvent.startTime
+  );
+  const candidateEndMs = toDateTimeMs(
+    candidateEvent.endDate,
+    candidateEvent.endTime
+  );
+
+  return allEvents.filter((existing) => {
+    if (!existing?.startDate || !existing?.endDate) return false;
+    if (!existing?.startTime || !existing?.endTime) return false;
+    if (excludeId && String(existing?.id) === String(excludeId)) return false;
+
+    const existingStartMs = toDateTimeMs(existing.startDate, existing.startTime);
+    const existingEndMs = toDateTimeMs(existing.endDate, existing.endTime);
+
+    return candidateStartMs < existingEndMs && candidateEndMs > existingStartMs;
+  });
+}
+
+function buildOverlapWarningMessage(conflicts) {
+  const visibleConflicts = conflicts.slice(0, 3);
+
+  const lines = visibleConflicts.map((ev, index) => {
+    const title = getEventDisplayName(ev);
+    const start = formatDateTimeDisplay(
+      ev.startDateDisplay || isoToDdMmYyyy(ev.startDate),
+      ev.startTime
+    );
+    const end = formatDateTimeDisplay(
+      ev.endDateDisplay || isoToDdMmYyyy(ev.endDate),
+      ev.endTime
+    );
+
+    return `${index + 1}. ${title} (${start} - ${end})`;
+  });
+
+  const extraCount = conflicts.length - visibleConflicts.length;
+  if (extraCount > 0) {
+    lines.push(`+ još ${extraCount} konflikta`);
+  }
+
+  return [
+    "Ovaj event se preklapa s postojećim događajem/događajima:",
+    "",
+    ...lines,
+    "",
+    "Želiš li ipak spremiti event?",
+  ].join("\n");
+}
+
 export default function ActivityFormPage({ mode }) {
   const navigate = useNavigate();
   const { type, id } = useParams();
@@ -107,18 +173,22 @@ export default function ActivityFormPage({ mode }) {
     if (!withWhom.trim()) e.withWhom = "Obavezno polje";
 
     if (!startDate.trim()) e.startDate = "Obavezno polje";
-    else if (!isValidDateDDMMYYYY(startDate.trim()))
+    else if (!isValidDateDDMMYYYY(startDate.trim())) {
       e.startDate = "Format mora biti DD.MM.YYYY";
+    }
 
-    if (!isValidTimeHHMM(startTime.trim()))
+    if (!isValidTimeHHMM(startTime.trim())) {
       e.startTime = "Vrijeme mora biti 24h format HH:MM";
+    }
 
     if (!endDate.trim()) e.endDate = "Obavezno polje";
-    else if (!isValidDateDDMMYYYY(endDate.trim()))
+    else if (!isValidDateDDMMYYYY(endDate.trim())) {
       e.endDate = "Format mora biti DD.MM.YYYY";
+    }
 
-    if (!isValidTimeHHMM(endTime.trim()))
+    if (!isValidTimeHHMM(endTime.trim())) {
       e.endTime = "Vrijeme mora biti 24h format HH:MM";
+    }
 
     if (!location.trim()) e.location = "Obavezno polje";
 
@@ -132,7 +202,10 @@ export default function ActivityFormPage({ mode }) {
       const endISO = ddMmYyyyToISO(endDate.trim());
       const startMs = toDateTimeMs(startISO, startTime.trim());
       const endMs = toDateTimeMs(endISO, endTime.trim());
-      if (endMs < startMs) e.range = "Završetak ne može biti prije početka";
+
+      if (endMs < startMs) {
+        e.range = "Završetak ne može biti prije početka";
+      }
     }
 
     return e;
@@ -166,6 +239,13 @@ export default function ActivityFormPage({ mode }) {
 
     const events = loadEvents();
 
+    const conflicts = findOverlappingEvents(base, events, isEdit ? id : null);
+
+    if (conflicts.length > 0) {
+      const proceed = window.confirm(buildOverlapWarningMessage(conflicts));
+      if (!proceed) return;
+    }
+
     if (isEdit && id) {
       const next = events.map((ev) => {
         if (String(ev?.id) !== String(id)) return ev;
@@ -182,7 +262,9 @@ export default function ActivityFormPage({ mode }) {
     }
 
     const event = {
-      id: crypto?.randomUUID ? crypto.randomUUID() : String(Date.now()),
+      id: globalThis.crypto?.randomUUID
+        ? globalThis.crypto.randomUUID()
+        : String(Date.now()),
       ...base,
       createdAt: new Date().toISOString(),
     };
@@ -274,12 +356,10 @@ export default function ActivityFormPage({ mode }) {
             </div>
 
             <div className="mt-3 text-xs">
-              <span
-                className={
-                  isPrivate ? "text-ss-gold" : "text-white/40"
-                }
-              >
-                {isPrivate ? "Private mode je uključen." : "Private mode je isključen."}
+              <span className={isPrivate ? "text-ss-gold" : "text-white/40"}>
+                {isPrivate
+                  ? "Private mode je uključen."
+                  : "Private mode je isključen."}
               </span>
             </div>
           </div>
