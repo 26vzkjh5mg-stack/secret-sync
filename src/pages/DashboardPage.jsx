@@ -290,11 +290,17 @@ export default function DashboardPage({ onLock, onOpen }) {
                   >
                     <div className="font-semibold">{row.label}</div>
 
-                    <div className="text-xs text-white/60 mt-1">
-                      {(row.event.startDateDisplay || row.event.startDate) || ""}{" "}
-                      {row.event.startTime || ""}
-                      {row.event.location ? ` • ${row.event.location}` : ""}
-                    </div>
+                    {row.event.isPrivate ? (
+                      <div className="text-xs text-ss-gold mt-1">
+                        🔒 Private event
+                      </div>
+                    ) : (
+                      <div className="text-xs text-white/60 mt-1">
+                        {(row.event.startDateDisplay || row.event.startDate) || ""}{" "}
+                        {row.event.startTime || ""}
+                        {row.event.location ? ` • ${row.event.location}` : ""}
+                      </div>
+                    )}
                   </button>
                 ) : (
                   <div

@@ -18,7 +18,6 @@ const FILTERS = [
   { key: "party", label: "PARTY" },
 ];
 
-// ---------- storage ----------
 function loadEventsSafe() {
   try {
     const raw = localStorage.getItem(KEY_EVENTS);
@@ -35,7 +34,6 @@ function saveEventsSafe(events) {
   } catch {}
 }
 
-// ---------- date helpers ----------
 function toMs(e) {
   const d = e?.startDate;
   const t = e?.startTime || "00:00";
@@ -70,7 +68,6 @@ function pad2(n) {
 }
 
 function formatICSDateUTC(dateObj) {
-  // YYYYMMDDTHHMMSSZ
   const y = dateObj.getUTCFullYear();
   const m = pad2(dateObj.getUTCMonth() + 1);
   const d = pad2(dateObj.getUTCDate());
@@ -81,7 +78,6 @@ function formatICSDateUTC(dateObj) {
 }
 
 function escapeICS(text) {
-  // RFC5545: escape backslash, semicolon, comma, newline
   return String(text || "")
     .replace(/\\/g, "\\\\")
     .replace(/;/g, "\\;")
@@ -90,21 +86,21 @@ function escapeICS(text) {
 }
 
 function safeFileName(s) {
-  return String(s || "event")
-    .trim()
-    .replace(/[<>:"/\\|?*\x00-\x1F]/g, "")
-    .replace(/\s+/g, "_")
-    .slice(0, 60) || "event";
+  return (
+    String(s || "event")
+      .trim()
+      .replace(/[<>:"/\\|?*\x00-\x1F]/g, "")
+      .replace(/\s+/g, "_")
+      .slice(0, 60) || "event"
+  );
 }
 
 function buildICSForEvent(e) {
-  // start
   const startDate = e?.startDate;
   const startTime = e?.startTime || "00:00";
   const start = new Date(`${startDate}T${startTime}`);
   const startValid = Number.isFinite(start.getTime());
 
-  // end: prefer endDate/endTime if exists, else +60 min
   const endDate = e?.endDate || startDate;
   const endTime = e?.endTime || "";
   let end;
@@ -122,14 +118,19 @@ function buildICSForEvent(e) {
   const dtstart = formatICSDateUTC(startValid ? start : new Date());
   const dtend = formatICSDateUTC(Number.isFinite(end.getTime()) ? end : new Date());
 
-  const summary = escapeICS(e?.title || "Secret Sync Event");
-  const location = escapeICS(e?.location || "");
+  const summary = escapeICS(e?.isPrivate ? "Private event" : e?.title || "Secret Sync Event");
+  const location = escapeICS(e?.isPrivate ? "" : e?.location || "");
   const descriptionParts = [];
-  if (e?.withWhom) descriptionParts.push(`S kime: ${e.withWhom}`);
-  if (e?.notes) descriptionParts.push(`Napomena: ${e.notes}`);
+
+  if (!e?.isPrivate) {
+    if (e?.withWhom) descriptionParts.push(`S kime: ${e.withWhom}`);
+    if (e?.notes) descriptionParts.push(`Napomena: ${e.notes}`);
+  } else {
+    descriptionParts.push("Private event");
+  }
+
   const description = escapeICS(descriptionParts.join("\n"));
 
-  // Minimal, widely supported VCALENDAR
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
@@ -149,7 +150,6 @@ function buildICSForEvent(e) {
 
   lines.push("END:VEVENT", "END:VCALENDAR");
 
-  // CRLF line endings for best compatibility
   return lines.join("\r\n");
 }
 
@@ -180,11 +180,6 @@ export default function CalendarPage() {
   const [filterType, setFilterType] = useState("all");
   const [selectedDayISO, setSelectedDayISO] = useState(null);
 
-  /**
-   * ✅ Undo system:
-   * - { kind: "delete-one", payload: <event> }
-   * - { kind: "clear-all", payload: <eventsBackupArray> }
-   */
   const [undoState, setUndoState] = useState(null);
   const undoTimerRef = useRef(null);
 
@@ -239,11 +234,12 @@ export default function CalendarPage() {
     setUndoState(null);
   }
 
-  // ✅ NEW: ICS export per event
   function handleExportICS(e) {
     const ics = buildICSForEvent(e);
-    const datePart = e?.startDate ? e.startDate.replaceAll("-", "") : "date";
-    const titlePart = safeFileName(e?.title || TYPE_LABEL[e?.type] || "SecretSync");
+    const datePart = e?.startDate ? String(e.startDate).split("-").join("") : "date";
+    const titlePart = safeFileName(
+      e?.isPrivate ? "Private_Event" : e?.title || TYPE_LABEL[e?.type] || "SecretSync"
+    );
     const fileName = `SecretSync_${datePart}_${titlePart}.ics`;
     downloadTextFile(fileName, ics);
   }
@@ -541,20 +537,22 @@ export default function CalendarPage() {
                     >
                       <div className="flex items-start justify-between gap-4">
                         <div>
-                          <div className="font-semibold">{e.title || "Event"}</div>
+                          <div className="font-semibold">
+                            {e.isPrivate ? "🔒 Private event" : e.title || "Event"}
+                          </div>
 
                           <div className="text-xs text-white/60 mt-1">
                             {date} {time}
-                            {e.location ? ` • ${e.location}` : ""}
+                            {!e.isPrivate && e.location ? ` • ${e.location}` : ""}
                           </div>
 
-                          {e.withWhom && (
+                          {!e.isPrivate && e.withWhom && (
                             <div className="text-xs text-white/50 mt-1">
                               S kime: {e.withWhom}
                             </div>
                           )}
 
-                          {e.notes && (
+                          {!e.isPrivate && e.notes && (
                             <div className="text-xs text-white/50 mt-1">
                               Napomena: {e.notes}
                             </div>
@@ -565,13 +563,12 @@ export default function CalendarPage() {
                           <div className="text-xs text-white/40">{TYPE_LABEL[e.type] || e.type}</div>
 
                           <div className="flex gap-2 flex-wrap justify-end">
-                            {/* ✅ NEW: ICS export */}
                             <button
                               onClick={() => handleExportICS(e)}
                               className="rounded-xl px-3 py-1.5 text-xs font-semibold bg-white/5 text-white/70 border border-white/10 hover:bg-ss-gold/15 hover:border-ss-gold/30 hover:text-ss-gold transition"
-                              title="Export to calendar (.ics)"
->
-                              Add To Private Calendar
+                              title="Export to private calendar (.ics)"
+                            >
+                              To Private Calendar
                             </button>
 
                             <button
@@ -599,7 +596,7 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {/* ✅ UNDO TOAST */}
+      {/* UNDO TOAST */}
       {undoState && (
         <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 px-4 w-full max-w-md">
           <div className="rounded-2xl border border-white/10 bg-black/50 backdrop-blur-xl shadow-2xl px-4 py-3 flex items-center justify-between gap-3">

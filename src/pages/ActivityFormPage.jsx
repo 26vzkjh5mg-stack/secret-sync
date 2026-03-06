@@ -47,10 +47,9 @@ function isValidDateDDMMYYYY(v) {
 
 function ddMmYyyyToISO(v) {
   const [dd, mm, yyyy] = v.split(".").map(Number);
-  return `${yyyy}-${pad2(mm)}-${pad2(dd)}`; // YYYY-MM-DD
+  return `${yyyy}-${pad2(mm)}-${pad2(dd)}`;
 }
 
-// ISO (YYYY-MM-DD) -> DD.MM.YYYY
 function isoToDdMmYyyy(iso) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(iso || ""))) return "";
   const [yyyy, mm, dd] = String(iso).split("-");
@@ -74,7 +73,6 @@ export default function ActivityFormPage({ mode }) {
 
   const isEdit = mode === "edit" || Boolean(id);
 
-  // učitaj event za edit (jednom)
   const existing = useMemo(() => {
     if (!isEdit || !id) return null;
     const arr = loadEvents();
@@ -87,8 +85,8 @@ export default function ActivityFormPage({ mode }) {
     existing?.startDateDisplay ||
       (existing?.startDate ? isoToDdMmYyyy(existing.startDate) : "") ||
       todayDdMmYyyy()
-  ); // DD.MM.YYYY
-  const [startTime, setStartTime] = useState(existing?.startTime || "18:00"); // 24h
+  );
+  const [startTime, setStartTime] = useState(existing?.startTime || "18:00");
   const [endDate, setEndDate] = useState(
     existing?.endDateDisplay ||
       (existing?.endDate ? isoToDdMmYyyy(existing.endDate) : "") ||
@@ -97,12 +95,11 @@ export default function ActivityFormPage({ mode }) {
   const [endTime, setEndTime] = useState(existing?.endTime || "20:00");
   const [location, setLocation] = useState(existing?.location || "");
   const [notes, setNotes] = useState(existing?.notes || "");
+  const [isPrivate, setIsPrivate] = useState(Boolean(existing?.isPrivate));
 
-  // refs for native date pickers
   const startPickerRef = useRef(null);
   const endPickerRef = useRef(null);
 
-  // ako je edit route, ali event ne postoji (npr. obrisan), vrati usera
   const missingEditEvent = isEdit && id && !existing;
 
   const errors = useMemo(() => {
@@ -125,7 +122,6 @@ export default function ActivityFormPage({ mode }) {
 
     if (!location.trim()) e.location = "Obavezno polje";
 
-    // range check
     if (
       isValidDateDDMMYYYY(startDate.trim()) &&
       isValidDateDDMMYYYY(endDate.trim()) &&
@@ -165,12 +161,12 @@ export default function ActivityFormPage({ mode }) {
 
       location: location.trim(),
       notes: notes.trim(),
+      isPrivate,
     };
 
     const events = loadEvents();
 
     if (isEdit && id) {
-      // UPDATE existing by id (keep createdAt if exists)
       const next = events.map((ev) => {
         if (String(ev?.id) !== String(id)) return ev;
         return {
@@ -185,7 +181,6 @@ export default function ActivityFormPage({ mode }) {
       return;
     }
 
-    // CREATE new
     const event = {
       id: crypto?.randomUUID ? crypto.randomUUID() : String(Date.now()),
       ...base,
@@ -243,6 +238,52 @@ export default function ActivityFormPage({ mode }) {
             )}
           </div>
 
+          {/* Private mode */}
+          <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 px-4 py-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-white/80 text-sm font-semibold">
+                  Private / Discreet mode
+                </div>
+                <div className="text-xs text-white/45 mt-1">
+                  Na dashboardu i u kalendaru prikazivat će se diskretan naziv umjesto detalja eventa.
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsPrivate((prev) => !prev)}
+                className={[
+                  "relative h-7 w-12 rounded-full border transition shrink-0",
+                  isPrivate
+                    ? "bg-[#d4af37] border-[#d4af37]"
+                    : "bg-white/10 border-white/10",
+                ].join(" ")}
+                aria-pressed={isPrivate}
+                aria-label="Uključi ili isključi private mode"
+              >
+                <span
+                  className={[
+                    "absolute top-1/2 h-5 w-5 -translate-y-1/2 rounded-full transition",
+                    isPrivate
+                      ? "right-1 bg-black"
+                      : "left-1 bg-white/80",
+                  ].join(" ")}
+                />
+              </button>
+            </div>
+
+            <div className="mt-3 text-xs">
+              <span
+                className={
+                  isPrivate ? "text-ss-gold" : "text-white/40"
+                }
+              >
+                {isPrivate ? "Private mode je uključen." : "Private mode je isključen."}
+              </span>
+            </div>
+          </div>
+
           {/* Dates + times */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5">
             <div>
@@ -274,7 +315,7 @@ export default function ActivityFormPage({ mode }) {
                   className="absolute opacity-0 pointer-events-none"
                   tabIndex={-1}
                   onChange={(e) => {
-                    const iso = e.target.value; // YYYY-MM-DD
+                    const iso = e.target.value;
                     const ddmmyyyy = isoToDdMmYyyy(iso);
                     if (ddmmyyyy) setStartDate(ddmmyyyy);
                   }}
@@ -331,7 +372,7 @@ export default function ActivityFormPage({ mode }) {
                   className="absolute opacity-0 pointer-events-none"
                   tabIndex={-1}
                   onChange={(e) => {
-                    const iso = e.target.value; // YYYY-MM-DD
+                    const iso = e.target.value;
                     const ddmmyyyy = isoToDdMmYyyy(iso);
                     if (ddmmyyyy) setEndDate(ddmmyyyy);
                   }}
