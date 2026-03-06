@@ -62,6 +62,14 @@ function monthLabel(d) {
   return d.toLocaleDateString("hr-HR", { month: "long", year: "numeric" });
 }
 
+function formatEventTimeRange(eventObj) {
+  const start = eventObj?.startTime?.trim?.() || "";
+  const end = eventObj?.endTime?.trim?.() || "";
+
+  if (start && end) return `${start} – ${end}`;
+  return start || end || "";
+}
+
 // ---------- ICS helpers ----------
 function pad2(n) {
   return String(n).padStart(2, "0");
@@ -533,7 +541,7 @@ export default function CalendarPage() {
                     e.startDate ||
                     "";
 
-                  const time = e.startTime || "";
+                  const timeRange = formatEventTimeRange(e);
 
                   return (
                     <div
@@ -547,7 +555,8 @@ export default function CalendarPage() {
                           </div>
 
                           <div className="text-xs text-white/60 mt-1">
-                            {date} {time}
+                            {date}
+                            {timeRange ? ` ${timeRange}` : ""}
                             {!e.isPrivate && e.location ? ` • ${e.location}` : ""}
                           </div>
 

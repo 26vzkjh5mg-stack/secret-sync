@@ -62,6 +62,14 @@ function nearestUpcomingByType(events, typeKey) {
   return filtered[0] || null;
 }
 
+function formatEventTimeRange(eventObj) {
+  const start = eventObj?.startTime?.trim?.() || "";
+  const end = eventObj?.endTime?.trim?.() || "";
+
+  if (start && end) return `${start} – ${end}`;
+  return start || end || "";
+}
+
 // ---------- ICS helpers ----------
 function pad2(n) {
   return String(n).padStart(2, "0");
@@ -429,8 +437,10 @@ export default function DashboardPage({ onLock, onOpen }) {
                       </div>
                     ) : (
                       <div className="text-xs text-white/60 mt-1">
-                        {(row.event.startDateDisplay || row.event.startDate) || ""}{" "}
-                        {row.event.startTime || ""}
+                        {(row.event.startDateDisplay || row.event.startDate) || ""}
+                        {formatEventTimeRange(row.event)
+                          ? ` ${formatEventTimeRange(row.event)}`
+                          : ""}
                         {row.event.location ? ` • ${row.event.location}` : ""}
                       </div>
                     )}
