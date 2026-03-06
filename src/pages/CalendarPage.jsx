@@ -18,6 +18,7 @@ const FILTERS = [
   { key: "party", label: "PARTY" },
 ];
 
+// ---------- storage ----------
 function loadEventsSafe() {
   try {
     const raw = localStorage.getItem(KEY_EVENTS);
@@ -34,6 +35,7 @@ function saveEventsSafe(events) {
   } catch {}
 }
 
+// ---------- date helpers ----------
 function toMs(e) {
   const d = e?.startDate;
   const t = e?.startTime || "00:00";
@@ -62,6 +64,109 @@ function monthLabel(d) {
   return d.toLocaleDateString("hr-HR", { month: "long", year: "numeric" });
 }
 
+// ---------- ICS helpers ----------
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
+function formatICSDateUTC(dateObj) {
+  // YYYYMMDDTHHMMSSZ
+  const y = dateObj.getUTCFullYear();
+  const m = pad2(dateObj.getUTCMonth() + 1);
+  const d = pad2(dateObj.getUTCDate());
+  const hh = pad2(dateObj.getUTCHours());
+  const mm = pad2(dateObj.getUTCMinutes());
+  const ss = pad2(dateObj.getUTCSeconds());
+  return `${y}${m}${d}T${hh}${mm}${ss}Z`;
+}
+
+function escapeICS(text) {
+  // RFC5545: escape backslash, semicolon, comma, newline
+  return String(text || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/;/g, "\\;")
+    .replace(/,/g, "\\,")
+    .replace(/\r?\n/g, "\\n");
+}
+
+function safeFileName(s) {
+  return String(s || "event")
+    .trim()
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, "")
+    .replace(/\s+/g, "_")
+    .slice(0, 60) || "event";
+}
+
+function buildICSForEvent(e) {
+  // start
+  const startDate = e?.startDate;
+  const startTime = e?.startTime || "00:00";
+  const start = new Date(`${startDate}T${startTime}`);
+  const startValid = Number.isFinite(start.getTime());
+
+  // end: prefer endDate/endTime if exists, else +60 min
+  const endDate = e?.endDate || startDate;
+  const endTime = e?.endTime || "";
+  let end;
+
+  if (endTime) {
+    end = new Date(`${endDate}T${endTime}`);
+  } else if (startValid) {
+    end = new Date(start.getTime() + 60 * 60 * 1000);
+  } else {
+    end = new Date();
+  }
+
+  const uid = `${e?.id || crypto?.randomUUID?.() || Date.now()}@secret-sync`;
+  const dtstamp = formatICSDateUTC(new Date());
+  const dtstart = formatICSDateUTC(startValid ? start : new Date());
+  const dtend = formatICSDateUTC(Number.isFinite(end.getTime()) ? end : new Date());
+
+  const summary = escapeICS(e?.title || "Secret Sync Event");
+  const location = escapeICS(e?.location || "");
+  const descriptionParts = [];
+  if (e?.withWhom) descriptionParts.push(`S kime: ${e.withWhom}`);
+  if (e?.notes) descriptionParts.push(`Napomena: ${e.notes}`);
+  const description = escapeICS(descriptionParts.join("\n"));
+
+  // Minimal, widely supported VCALENDAR
+  const lines = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Secret Sync//EN",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    "BEGIN:VEVENT",
+    `UID:${uid}`,
+    `DTSTAMP:${dtstamp}`,
+    `DTSTART:${dtstart}`,
+    `DTEND:${dtend}`,
+    `SUMMARY:${summary}`,
+  ];
+
+  if (location) lines.push(`LOCATION:${location}`);
+  if (description) lines.push(`DESCRIPTION:${description}`);
+
+  lines.push("END:VEVENT", "END:VCALENDAR");
+
+  // CRLF line endings for best compatibility
+  return lines.join("\r\n");
+}
+
+function downloadTextFile(filename, content, mime = "text/calendar;charset=utf-8") {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
 export default function CalendarPage() {
   const navigate = useNavigate();
 
@@ -76,12 +181,11 @@ export default function CalendarPage() {
   const [selectedDayISO, setSelectedDayISO] = useState(null);
 
   /**
-   * ✅ Undo system: supports either
+   * ✅ Undo system:
    * - { kind: "delete-one", payload: <event> }
    * - { kind: "clear-all", payload: <eventsBackupArray> }
    */
   const [undoState, setUndoState] = useState(null);
-  // undoState: { kind, payload, expiresAt }
   const undoTimerRef = useRef(null);
 
   function clearUndoTimer() {
@@ -106,7 +210,6 @@ export default function CalendarPage() {
   function handleUndo() {
     if (!undoState) return;
 
-    // Restore based on undo kind
     if (undoState.kind === "delete-one") {
       const restored = undoState.payload;
       if (!restored) return;
@@ -128,15 +231,21 @@ export default function CalendarPage() {
       saveEventsSafe(next.map(({ __ms, ...rest }) => rest));
       setEvents(next);
 
-      // Optional: keep user in a sane UI state after restore
-      // We reset filters only if current state is inconsistent (e.g., selected day not found)
-      // For simplicity + predictable UX:
       setSelectedDayISO(null);
       setFilterType("all");
     }
 
     clearUndoTimer();
     setUndoState(null);
+  }
+
+  // ✅ NEW: ICS export per event
+  function handleExportICS(e) {
+    const ics = buildICSForEvent(e);
+    const datePart = e?.startDate ? e.startDate.replaceAll("-", "") : "date";
+    const titlePart = safeFileName(e?.title || TYPE_LABEL[e?.type] || "SecretSync");
+    const fileName = `SecretSync_${datePart}_${titlePart}.ics`;
+    downloadTextFile(fileName, ics);
   }
 
   const [cursor, setCursor] = useState(() => {
@@ -191,7 +300,6 @@ export default function CalendarPage() {
     const ok = window.confirm(`Obrisati event${label}?`);
     if (!ok) return;
 
-    // only allow undo for the LAST destructive action
     clearUndoTimer();
     setUndoState(null);
 
@@ -207,7 +315,6 @@ export default function CalendarPage() {
     if (target) startUndoCountdown("delete-one", target, 5);
   }
 
-  // ✅ Clear all events + Undo
   function handleClearAll() {
     if (events.length === 0) return;
 
@@ -216,22 +323,19 @@ export default function CalendarPage() {
     );
     if (!ok) return;
 
-    // only allow undo for the LAST destructive action
     clearUndoTimer();
     setUndoState(null);
 
-    // Backup current state (without __ms)
     const backup = events.map(({ __ms, ...rest }) => rest);
 
-    // Clear storage + UI
     try {
       localStorage.removeItem(KEY_EVENTS);
     } catch {}
+
     setEvents([]);
     setSelectedDayISO(null);
     setFilterType("all");
 
-    // Start undo for clear-all (5 seconds)
     startUndoCountdown("clear-all", backup, 5);
   }
 
@@ -251,7 +355,6 @@ export default function CalendarPage() {
     ? formatISOToDDMMYYYY(selectedDayISO) || selectedDayISO
     : null;
 
-  // Countdown display (approx)
   const undoSecondsLeft = useMemo(() => {
     if (!undoState?.expiresAt) return 0;
     const msLeft = Math.max(0, undoState.expiresAt - Date.now());
@@ -461,7 +564,16 @@ export default function CalendarPage() {
                         <div className="flex flex-col items-end gap-2">
                           <div className="text-xs text-white/40">{TYPE_LABEL[e.type] || e.type}</div>
 
-                          <div className="flex gap-2">
+                          <div className="flex gap-2 flex-wrap justify-end">
+                            {/* ✅ NEW: ICS export */}
+                            <button
+                              onClick={() => handleExportICS(e)}
+                              className="rounded-xl px-3 py-1.5 text-xs font-semibold bg-white/5 text-white/70 border border-white/10 hover:bg-ss-gold/15 hover:border-ss-gold/30 hover:text-ss-gold transition"
+                              title="Export to calendar (.ics)"
+>
+                              Add To Private Calendar
+                            </button>
+
                             <button
                               onClick={() => navigate(`/activity/${e.type}/edit/${e.id}`)}
                               className="rounded-xl px-3 py-1.5 text-xs font-semibold bg-white/5 text-white/70 border border-white/10 hover:bg-blue-500/15 hover:border-blue-400/30 hover:text-blue-200 transition"
@@ -492,8 +604,7 @@ export default function CalendarPage() {
         <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 px-4 w-full max-w-md">
           <div className="rounded-2xl border border-white/10 bg-black/50 backdrop-blur-xl shadow-2xl px-4 py-3 flex items-center justify-between gap-3">
             <div className="text-sm text-white/80">
-              {undoMessage}{" "}
-              <span className="text-white/40">({Math.max(0, undoSecondsLeft)}s)</span>
+              {undoMessage} <span className="text-white/40">({Math.max(0, undoSecondsLeft)}s)</span>
             </div>
 
             <button

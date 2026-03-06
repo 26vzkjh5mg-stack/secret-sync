@@ -13,7 +13,7 @@ function loadEventsSafe() {
   }
 }
 
-// NEW — helpers za tjedan (Mon–Sun)
+// helpers za tjedan (Mon–Sun)
 function weekStartMonday(date = new Date()) {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
@@ -36,7 +36,6 @@ function isoFromDate(d) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-// NEW (1) — kategorije koje želimo prikazati uvijek (4 komada)
 const CATEGORIES = [
   { key: "meet-greet", label: "MEET & GREET" },
   { key: "outdoor", label: "OUTDOOR" },
@@ -44,15 +43,13 @@ const CATEGORIES = [
   { key: "party", label: "PARTY" },
 ];
 
-// NEW (2) — pretvori event start u ms (za usporedbu/sort)
 function toMs(e) {
-  const d = e?.startDate; // ISO YYYY-MM-DD
+  const d = e?.startDate;
   const t = e?.startTime || "00:00";
   const ms = new Date(`${d}T${t}`).getTime();
   return Number.isFinite(ms) ? ms : 0;
 }
 
-// NEW (3) — uzmi najbliži budući event za zadani type
 function nearestUpcomingByType(events, typeKey) {
   const now = Date.now();
 
@@ -61,7 +58,7 @@ function nearestUpcomingByType(events, typeKey) {
     .map((e) => ({ ...e, __ms: toMs(e) }))
     .filter((e) => e.__ms >= now);
 
-  filtered.sort((a, b) => a.__ms - b.__ms); // nearest first
+  filtered.sort((a, b) => a.__ms - b.__ms);
   return filtered[0] || null;
 }
 
@@ -94,56 +91,53 @@ export default function DashboardPage({ onLock, onOpen }) {
 
   const events = loadEventsSafe();
 
-  // NEW (4) — 1 event po kategoriji (najbliži budući po datumu)
   const upcomingByCategory = CATEGORIES.map((c) => ({
     ...c,
     event: nearestUpcomingByType(events, c.key),
   }));
 
-  // NEW — weekly dots iz localStorage (Mon–Sun)
   const weekStart = weekStartMonday(new Date());
   const todayISO = isoFromDate(new Date());
 
-  // Map: "YYYY-MM-DD" -> broj eventa taj dan
   const eventsByDay = events.reduce((acc, e) => {
-    const key = e?.startDate; // ISO
+    const key = e?.startDate;
     if (key) acc[key] = (acc[key] || 0) + 1;
     return acc;
   }, {});
 
   return (
-    <div className="min-h-screen p-8">
+    <div className="min-h-screen px-4 py-6 sm:px-6 sm:py-8">
       {/* HEADER */}
-      <div className="max-w-6xl mx-auto flex justify-between items-center">
-        <div className="flex items-center gap-3">
+      <div className="max-w-6xl mx-auto flex justify-between items-center gap-4">
+        <div className="flex items-center gap-3 min-w-0">
           <img
             src="/Logo.png"
             alt="Secret Sync"
             className="h-10 w-10 object-contain drop-shadow-[0_0_12px_rgba(212,175,55,0.25)]"
           />
 
-          <h1 className="text-3xl font-semibold">
+          <h1 className="text-2xl sm:text-3xl font-semibold truncate">
             <span className="text-ss-gold">Secret</span> Sync
           </h1>
         </div>
 
         <button
           onClick={onLock}
-          className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20"
+          className="shrink-0 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 transition"
         >
           Lock
         </button>
       </div>
 
       {/* GRID */}
-      <div className="max-w-6xl mx-auto mt-10 grid md:grid-cols-3 gap-6">
+      <div className="max-w-6xl mx-auto mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* ACTIVITY CARDS */}
-        <div className="md:col-span-2 grid sm:grid-cols-2 gap-6">
+        <div className="order-1 md:order-1 md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6">
           {activityCards.map((card) => (
             <button
               key={card.id}
               onClick={() => navigate(routeForActivity(card.id))}
-              className="group relative rounded-3xl overflow-hidden border border-white/10 hover:border-ss-gold/40 transition"
+              className="group relative min-h-[140px] sm:min-h-[180px] md:min-h-[220px] rounded-3xl overflow-hidden border border-white/10 hover:border-ss-gold/40 transition"
             >
               <img
                 src={card.img}
@@ -154,8 +148,8 @@ export default function DashboardPage({ onLock, onOpen }) {
               <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-black/20" />
               <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition bg-[radial-gradient(700px_260px_at_50%_30%,rgba(212,175,55,0.18),transparent_60%)]" />
 
-              <div className="ss-card-center">
-                <h2 className="ss-title-lux text-2xl md:text-3xl">
+              <div className="absolute inset-0 flex items-center justify-center px-4 text-center">
+                <h2 className="ss-title-lux text-xl sm:text-2xl md:text-3xl leading-tight">
                   {card.title}
                 </h2>
               </div>
@@ -168,12 +162,12 @@ export default function DashboardPage({ onLock, onOpen }) {
         {/* CALENDAR CARD */}
         <button
           onClick={() => navigate("/calendar")}
-          className="rounded-3xl border border-white/10 bg-white/5 p-6 text-left hover:border-ss-gold/40 transition"
+          className="order-2 md:order-2 rounded-3xl border border-white/10 bg-white/5 p-5 sm:p-6 text-left hover:border-ss-gold/40 transition"
         >
           <h2 className="text-xl font-semibold ss-gold-text">Calendar</h2>
           <p className="text-sm text-white/60 mt-1">Weekly overview</p>
 
-          {/* WEEK HEADER: Mon..Sun + day-of-month */}
+          {/* WEEK HEADER */}
           <div className="mt-6 grid grid-cols-7 gap-2 text-xs text-center text-white/80">
             {Array.from({ length: 7 }).map((_, i) => {
               const dayDate = addDays(weekStart, i);
@@ -186,7 +180,7 @@ export default function DashboardPage({ onLock, onOpen }) {
                   <span>{week[i]}</span>
                   <span
                     className={[
-                      "mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full",
+                      "mt-0.5 inline-flex h-7 w-7 items-center justify-center rounded-full",
                       isToday
                         ? "ring-1 ring-ss-gold/60 text-ss-gold"
                         : "text-white/50",
@@ -199,7 +193,7 @@ export default function DashboardPage({ onLock, onOpen }) {
             })}
           </div>
 
-          {/* WEEK GRID: dots from events */}
+          {/* WEEK GRID */}
           <div className="mt-3 grid grid-cols-7 gap-2">
             {Array.from({ length: 7 }).map((_, i) => {
               const dayDate = addDays(weekStart, i);
@@ -207,7 +201,10 @@ export default function DashboardPage({ onLock, onOpen }) {
               const count = eventsByDay[iso] || 0;
 
               return (
-                <div key={iso} className="h-10 rounded-lg bg-white/10 relative">
+                <div
+                  key={iso}
+                  className="h-11 rounded-lg bg-white/10 relative"
+                >
                   {count > 0 && (
                     <span className="absolute bottom-2 left-1/2 -translate-x-1/2 h-1.5 w-1.5 rounded-full bg-ss-gold" />
                   )}
@@ -217,21 +214,24 @@ export default function DashboardPage({ onLock, onOpen }) {
           </div>
 
           <div className="mt-6">
-            <p className="text-xs ss-gold-text">UPCOMING EVENTS</p>
+            <p className="text-xs ss-gold-text tracking-wide">UPCOMING EVENTS</p>
 
             <div className="mt-3 space-y-2 text-sm">
               {upcomingByCategory.map((row) => (
-                <div key={row.key} className="bg-white/10 p-2 rounded-lg">
+                <div
+                  key={row.key}
+                  className="bg-white/10 p-3 rounded-lg"
+                >
                   <div className="font-semibold">{row.label}</div>
 
                   {row.event ? (
-                    <div className="text-xs text-white/60">
+                    <div className="text-xs text-white/60 mt-1">
                       {(row.event.startDateDisplay || row.event.startDate) || ""}{" "}
                       {row.event.startTime || ""}
                       {row.event.location ? ` • ${row.event.location}` : ""}
                     </div>
                   ) : (
-                    <div className="text-xs text-white/40">
+                    <div className="text-xs text-white/40 mt-1">
                       Nema upcoming eventa
                     </div>
                   )}
